@@ -1,6 +1,6 @@
 from crewai import Agent
 
-class AnalysisAgents:
+class AnalysisAgent:
     def __init__(self, llm):
         self.llm = llm
 

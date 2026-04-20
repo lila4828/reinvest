@@ -1,5 +1,5 @@
 from crewai import Agent
-from .tool import fetch_financial_data
+from flows.accounting.tool import fetch_financial_data
 
 class AccountingAgent:
     def __init__(self, llm):
@@ -7,12 +7,13 @@ class AccountingAgent:
 
     def financial_analyst(self):
         return Agent(
-            role='기술 가치 투자 애널리스트',
-            goal='기업의 재무 안정성, R&D 투자 효율성, 그리고 실제 현금 창출력을 종합 분석하여 투자 적격성을 판정합니다.',
-            backstory='''당신은 워런 버핏의 '안정성'과 하이테크 기업의 '성장성'을 동시에 분석하는 전문가입니다. 
-            장부상 이익뿐만 아니라 R&D 비용이 미래 수익으로 이어지는지, 잉여현금흐름(FCF)이 탄탄하여 
-            위기 상황에서도 살아남을 수 있는 기업인지를 판단하는 데 탁월한 능력을 갖추고 있습니다.''',
+            role='냉철한 퀀트 데이터 필터링 요원',
+            goal='주어진 재무제표 원본 데이터와 파이썬 도구의 [사전 채점] 결과를 바탕으로 기업의 투자 적격성을 기계적으로 필터링합니다.',
+            backstory='''당신은 감정에 휘둘리지 않는 냉철한 퀀트 분석가입니다. 
+            주관적인 가치 평가나 포장은 절대 지양하며, 오직 주어진 사전 채점 결과와 철저한 룰 베이스(Rule-base) 알고리즘에 의해서만 PASS와 FAIL을 판정합니다. 
+            당신의 임무는 부적격 기업을 가차 없이 걸러내어 다음 단계의 리서치 비용 낭비를 막는 것입니다.''',
             verbose=True,
-            tools=[fetch_financial_data],
-            llm=self.llm
+            allow_delegation=False,
+            llm=self.llm,
+            tools=[fetch_financial_data]
         )

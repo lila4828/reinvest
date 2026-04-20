@@ -8,114 +8,126 @@ from flows.analysis.agent import AnalysisAgent
 from flows.analysis.task import AnalysisTask
 from flows.accounting.agent import AccountingAgent
 from flows.accounting.task import AccountingTask
+from flows.macro.agent import MacroAgent
+from flows.macro.task import MacroTask
 
-# 1. 환경 변수 로드
+# 0. 환경 변수 로드
 load_dotenv()
 
-def run_financial_crew():
-    '''
-    # Gemini 엔진 선택
-    # 2-1. 가벼운 업무용 모델 (리서치, 재무 수집)
-    fast_llm = LLM(
-        model="gemini/gemini-2.5-flash",
-        api_key=os.getenv("GOOGLE_API_KEY"),
-        temperature=0.3,
-        stream=True
-    )
-    # 2-2. 깊은 사고용 모델 (최종 투자 전략 분석)
-    smart_llm = LLM(
-        model="gemini/gemini-2.5-pro",
-        api_key=os.getenv("GOOGLE_API_KEY"),
-        temperature=0.5,
-        stream=True
-    )
-    '''
-    
-    # OpenAI 엔진 선택
-    # 2-1. 가벼운 업무용 모델 (리서치, 재무 수집)
+def run_financial_crew():    
+    # 1-1. 가벼운 업무용 모델 (리서치, 재무 수집)
     fast_llm = LLM(
         model="gpt-4o-mini",
         api_key=os.getenv('OPENAI_API_KEY'),
         temperature=0.3,
         stream=True
     )
-    # 2-2. 깊은 사고용 모델 (최종 투자 전략 분석)
+    # 1-2. 깊은 사고용 모델 (최종 투자 전략 분석)
     smart_llm = LLM(
         model="gpt-4o",
         api_key=os.getenv('OPENAI_API_KEY'),
         temperature=0.5,
         stream=True
     )
-    
 
-    # 3. 타겟 종목 랜덤 선택 로직
-    # .KS는 코스피, .KQ는 코스닥
+    # ---------------------------------------------------------
+    # 2. 글로벌 거시경제 분석 (전체 프로세스 시작 전 딱 한 번 수행)
+    # ---------------------------------------------------------
+    print(f"\n🌍 [0단계] 글로벌 거시경제 지표 분석을 시작합니다...")
+    macro_admin = MacroAgent(fast_llm)
+    macro_tasks = MacroTask()
+    
+    macro_economist = macro_admin.macro_economist()
+    task_macro = macro_tasks.analyze_macro_economy(macro_economist)
+
+    macro_crew = Crew(
+        agents=[macro_economist],
+        tasks=[task_macro],
+        verbose=False
+    )
+    macro_result = macro_crew.kickoff()
+    print(f"✅ 매크로 분석 완료: 환율/금리 상황 파악 성공.")
+
+    # ---------------------------------------------------------
+    # 3. 다중 종목 스캔 루프 (옵션 C: 3개 종목 연속 처리)
+    # ---------------------------------------------------------
     stock_pool = [
-        ("005930.KS", "삼성전자"),
-        ("000660.KS", "SK하이닉스"),
-        ("086520.KQ", "에코프로")
+        ("005930.KS", "삼성전자"),        # (기존) "PASS (주의)" 받고 리포트까지 나오는지 확인
+        ("0009K0.KQ", "에임드바이오"),    # 💡 (테스트용) 1년 미만 신규 상장! "FAIL" 컷오프 확인
+        ("000660.KS", "SK하이닉스"),      # (기존) 정상 통과 후 리포트 확인
     ]
-    target_ticker, target_company = stock_pool[0]
-    print(f"\n🎯 [시스템] 타겟 종목 선정: {target_company} ({target_ticker})")
 
-    # 4. 팀 매니저들 소집
-    res_admin = ResearchAgent(fast_llm)      
-    res_tasks = ResearchTask()
-    acc_admin = AccountingAgent(fast_llm)    
-    acc_tasks = AccountingTask()
-    ana_admin = AnalysisAgent(smart_llm)      
-    ana_tasks = AnalysisTask()
+    # 모든 종목의 최종 결과를 모아둘 리스트
+    all_reports = []
 
-    # ---------------------------------------------------------
-    # [1단계] 재무 분석 에이전트 가동 (조건부 필터링)
-    # ---------------------------------------------------------
-    print(f"\n📊 [1단계] {target_company} 재무 건전성 검토를 시작합니다...")
-    accounting_agent = acc_admin.financial_analyst()
-    
-    # Task에 변수(company, ticker) 전달
-    task_accounting = acc_tasks.analyze_financial_statements(accounting_agent, target_company, target_ticker)
+    print("\n🏭 [시스템] 다중 종목 재무 필터링 및 분석 공장을 가동합니다...")
 
-    financial_crew = Crew(
-        agents=[accounting_agent],
-        tasks=[task_accounting],
-        max_rpm=10,
-        verbose=True
-    )
-    acc_result = financial_crew.kickoff()
+    for target_ticker, target_company in stock_pool:
+        print(f"\n{'='*60}")
+        print(f"🎯 [시스템] 타겟 종목 스캔: {target_company} ({target_ticker})")
+        print(f"{'='*60}")
 
-    # 재무 결과 판단 (FAIL 조건)
-    if "FAIL" in acc_result.raw or "부적격" in acc_result.raw:
-        return f"🚫 [분석 중단] {target_company}의 재무 상태가 기준에 미달하여 리서치 및 심층 분석을 진행하지 않습니다.\n\n[재무 요약]\n{acc_result.raw}"
+        # 에이전트 소집
+        res_admin = ResearchAgent(fast_llm)      
+        res_tasks = ResearchTask()
+        acc_admin = AccountingAgent(fast_llm)    
+        acc_tasks = AccountingTask()
+        ana_admin = AnalysisAgent(smart_llm)      
+        ana_tasks = AnalysisTask()
 
-    print(f"\n✅ [1단계 통과] {target_company} 재무 기준 합격. 뉴스 리서치 및 최종 분석을 진행합니다.")
+        # [1단계] 재무 및 상장 검토 (Filter)
+        print(f"📊 [1단계] 재무 건전성 및 999일 이평선 검토 중...")
+        accounting_agent = acc_admin.financial_analyst()
+        task_accounting = acc_tasks.analyze_financial_statements(accounting_agent, target_company, target_ticker)
 
-    # ---------------------------------------------------------
-    # [2단계] 리서치 및 최종 분석 에이전트 가동
-    # ---------------------------------------------------------
-    researcher_agent = res_admin.news_researcher()
-    analyst_agent = ana_admin.investment_analyst()
+        financial_crew = Crew(
+            agents=[accounting_agent],
+            tasks=[task_accounting],
+            verbose=False
+        )
+        acc_result = financial_crew.kickoff()
 
-    # Task에 변수 전달 및 1단계 결과를 Context로 활용
-    task_research = res_tasks.collect_news_task(researcher_agent, target_company)
-    task_analysis = ana_tasks.report_writing_task(analyst_agent, target_company, acc_result.raw, [task_research])
+        # FAIL 조건 체크
+        if "FAIL" in acc_result.raw or "부적격" in acc_result.raw:
+            skip_msg = f"🚫 [분석 중단] {target_company}: 기준 미달\n{acc_result.raw}"
+            print(skip_msg)
+            all_reports.append(skip_msg)
+            continue
 
-    analysis_crew = Crew(
-        agents=[researcher_agent, analyst_agent],
-        tasks=[task_research, task_analysis],
-        process=Process.sequential,
-        max_rpm=10,
-        verbose=True
-    )
-    
-    print("\n📰 [2단계] 시장 뉴스 수집 및 종합 투자 리포트 작성을 시작합니다...")
-    final_result = analysis_crew.kickoff()
-    
-    return final_result.raw
+        print(f"✅ [1단계 통과] {target_company} 합격.")
+
+        # [2단계] 뉴스 리서치 및 종합 분석
+        # 💡 매크로 결과(macro_result)를 시니어 분석가에게 Context로 함께 전달합니다.
+        researcher_agent = res_admin.news_researcher()
+        analyst_agent = ana_admin.investment_analyst()
+
+        task_research = res_tasks.collect_news_task(researcher_agent, target_company)
+        
+        # 💡 분석 태스크에 재무결과(acc_result)와 매크로결과(macro_result)를 모두 태워 보냅니다.
+        task_analysis = ana_tasks.report_writing_task(
+            analyst_agent, 
+            target_company, 
+            acc_result.raw,           # 재무/이평선/배당 데이터
+            macro_result.raw,         # 환율/금리/나스닥 데이터
+            [task_research]           # 최신 뉴스 데이터
+        )
+
+        analysis_crew = Crew(
+            agents=[researcher_agent, analyst_agent],
+            tasks=[task_research, task_analysis],
+            process=Process.sequential,
+            verbose=True
+        )
+        
+        print(f"📰 [2단계] {target_company} 종합 리포트 생성 중...")
+        final_result = analysis_crew.kickoff()
+        all_reports.append(f"📈 [{target_company} 최종 리포트]\n{final_result.raw}")
+
+    return "\n\n" + "★"*60 + "\n\n".join(all_reports)
 
 if __name__ == "__main__":
-    final_result = run_financial_crew()
-    
-    print("\n" + "="*50)
-    print("📈 [최종 투자 분석 리포트]")
-    print("="*50)
-    print(final_result)
+    final_output = run_financial_crew()
+    print("\n\n" + "="*60)
+    print("🏆 [전체 분석 결과]")
+    print("="*60)
+    print(final_output)

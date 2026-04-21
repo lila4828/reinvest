@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from crewai import Crew, Process, LLM
+from datetime import datetime
 
 from flows.research.agent import ResearchAgent
 from flows.research.task import ResearchTask
@@ -53,8 +54,7 @@ def run_financial_crew():
     # ---------------------------------------------------------
     stock_pool = [
         ("005930.KS", "삼성전자"),        # (기존) "PASS (주의)" 받고 리포트까지 나오는지 확인
-        ("0009K0.KQ", "에임드바이오"),    # 💡 (테스트용) 1년 미만 신규 상장! "FAIL" 컷오프 확인
-        ("000660.KS", "SK하이닉스"),      # (기존) 정상 통과 후 리포트 확인
+        ("0009K0.KQ", "에임드바이오"),    # (테스트용) 1년 미만 신규 상장! "FAIL" 컷오프 확인
     ]
 
     # 모든 종목의 최종 결과를 모아둘 리스트
@@ -127,7 +127,30 @@ def run_financial_crew():
 
 if __name__ == "__main__":
     final_output = run_financial_crew()
+    
     print("\n\n" + "="*60)
     print("🏆 [전체 분석 결과]")
     print("="*60)
     print(final_output)
+    
+    # ---------------------------------------------------------
+    # 💡 최종 리포트 마크다운 파일 자동 저장 로직 (하루 1개 덮어쓰기)
+    # ---------------------------------------------------------
+    try:
+        # PM님이 미리 만들어두신 result 폴더를 타겟으로 합니다.
+        os.makedirs("result", exist_ok=True) 
+        
+        # YYYY-MM-DD 형식으로 파일명 지정 (예: 2026-04-21.md)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        file_name = f"result/{today_str}.md"
+        
+        # 파일 작성 ("w" 모드이므로 오늘 날짜 안에서는 계속 덮어쓰기가 됩니다)
+        with open(file_name, "w", encoding="utf-8") as f:
+            f.write(f"> **최근 업데이트 일시:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(final_output)
+            
+        print(f"\n💾 [저장 완료] 오늘의 종합 투자 리포트가 성공적으로 저장되었습니다.")
+        print(f"👉 확인 경로: {file_name}\n")
+        
+    except Exception as e:
+        print(f"\n❌ [저장 실패] 파일 저장 중 오류가 발생했습니다: {str(e)}\n")

@@ -30,11 +30,25 @@ reinvest/
 ```
 
 ## 🚀 시작하기 (Getting Started)
-**환경 설정:** .env 파일에 SERPER_API_KEY 및 OPENAI_API_KEY 등록
 
-**패키지 설치:** pip install -r requirements.txt
+**1. 환경 설정:** 프로젝트 루트 경로에 `.env` 파일을 생성하고 API 키를 등록합니다.
+> SERPER_API_KEY="your_serper_api_key"
+> OPENAI_API_KEY="your_openai_api_key"
 
-**실행:** python main.py
+**2. 가상환경 생성 및 활성화:**
+- **Windows:**
+  > python -m venv venv
+  > .\venv\Scripts\activate
+
+- **Mac/Linux:**
+  > python3 -m venv venv
+  > source venv/bin/activate
+
+**3. 패키지 설치:**
+> pip install -r requirements.txt
+
+**4. 시스템 실행:**
+> python main.py
 
 ## 📚 개발 일지 및 트러블슈팅
 이 프로젝트를 구축하며 겪은 LLM 쿼터 이슈, API 결측치 문제, 환각 제어 로직 등 상세한 엔지니어링 기록은 DEV_LOG.md에서 확인하실 수 있습니다.

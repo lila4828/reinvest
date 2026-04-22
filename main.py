@@ -16,19 +16,24 @@ from flows.macro.task import MacroTask
 load_dotenv()
 
 def run_financial_crew():    
-    # 1-1. 가벼운 업무용 모델 (리서치, 재무 수집)
+    # 1-1. 가벼운 업무용 모델 (거시경제, 재무 수집)
     fast_llm = LLM(
         model="gpt-4o-mini",
         api_key=os.getenv('OPENAI_API_KEY'),
-        temperature=0.3,
-        stream=True
+        stream=True #LLM 동작모습 확인(배포시 삭제)
     )
-    # 1-2. 깊은 사고용 모델 (최종 투자 전략 분석)
-    smart_llm = LLM(
-        model="gpt-4o",
+    # 1-2. 리서치 전용 모델(환각 원천 차단)
+    fact_llm = LLM(
+        model="o3-mini",
         api_key=os.getenv('OPENAI_API_KEY'),
-        temperature=0.5,
-        stream=True
+        stream=True #LLM 동작모습 확인(배포시 삭제)
+    )
+    # 1-3. 깊은 사고용 모델 (최종 투자 전략 분석)
+    smart_llm = LLM(
+        model="gpt-5.4",
+        api_key=os.getenv('OPENAI_API_KEY'),
+        temperature=0.4,
+        stream=True #LLM 동작모습 확인(배포시 삭제)
     )
 
     # ---------------------------------------------------------
@@ -68,10 +73,10 @@ def run_financial_crew():
         print(f"{'='*60}")
 
         # 에이전트 소집
-        res_admin = ResearchAgent(fast_llm)      
-        res_tasks = ResearchTask()
         acc_admin = AccountingAgent(fast_llm)    
         acc_tasks = AccountingTask()
+        res_admin = ResearchAgent(fact_llm)      
+        res_tasks = ResearchTask()
         ana_admin = AnalysisAgent(smart_llm)      
         ana_tasks = AnalysisTask()
 

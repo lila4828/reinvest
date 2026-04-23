@@ -10,7 +10,7 @@ def fetch_financial_data(ticker: str) -> str:
         stock = yf.Ticker(ticker)
         
         hist = stock.history(period="5y")
-        if len(hist) < 200:
+        if len(hist) < 252:
             return f"[{ticker} 치명적 결함] 상장된 지 1년이 되지 않은 신규 상장 기업입니다. 데이터 부족으로 분석 불가."
 
         info = stock.info

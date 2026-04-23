@@ -11,6 +11,8 @@ from flows.accounting.agent import AccountingAgent
 from flows.accounting.task import AccountingTask
 from flows.macro.agent import MacroAgent
 from flows.macro.task import MacroTask
+from flows.youtube.agent import YoutubeAgent
+from flows.youtube.task import YoutubeTask
 
 # 0. 환경 변수 로드
 load_dotenv()
@@ -22,7 +24,7 @@ def run_financial_crew():
         api_key=os.getenv('OPENAI_API_KEY'),
         stream=True #LLM 동작모습 확인(배포시 삭제)
     )
-    # 1-2. 리서치 전용 모델(환각 원천 차단)
+    # 1-2. 리서치 전용 모델(환각 원천 차단 및 긴 자막 요약)
     fact_llm = LLM(
         model="o3-mini",
         api_key=os.getenv('OPENAI_API_KEY'),
@@ -58,8 +60,16 @@ def run_financial_crew():
     # 3. 다중 종목 스캔 루프 (옵션 C: 3개 종목 연속 처리)
     # ---------------------------------------------------------
     stock_pool = [
-        ("005930.KS", "삼성전자"),        # (기존) "PASS (주의)" 받고 리포트까지 나오는지 확인
-        ("0009K0.KQ", "에임드바이오"),    # (테스트용) 1년 미만 신규 상장! "FAIL" 컷오프 확인
+        # [1번: 신규 상장주] - MA999 등 장기 데이터 부재 시 FAIL 처리 확인
+        ("477380.KQ", "에이치비인베스트먼트"), 
+        # [2번: 적자 지속 테마주] - 뉴스는 화려하지만 재무는 엉망일 때 o3-mini의 'Sell' 의견 확인
+        ("041020.KQ", "폴라리스오피스"), 
+        # [3번: 변동성 끝판왕] - 최근 이슈가 많아 뉴스 팩트가 꼬이기 쉬운 종목
+        ("003670.KS", "포스코홀딩스"), 
+        # [4번: 해외 주식] - 야후 파이낸스 티커 호환성 및 환율 반영 로직 테스트
+        ("TSLA", "테슬라"), 
+        # [대조군] - 우리 시스템의 기준점이 되는 대장주
+        ("005930.KS", "삼성전자")
     ]
 
     # 모든 종목의 최종 결과를 모아둘 리스트
@@ -79,6 +89,9 @@ def run_financial_crew():
         res_tasks = ResearchTask()
         ana_admin = AnalysisAgent(smart_llm)      
         ana_tasks = AnalysisTask()
+        # 🚨 [신규 추가] 유튜브 어드민 소집 (정확한 요약을 위해 추론 모델 사용)
+        yt_admin = YoutubeAgent(fact_llm)
+        yt_tasks = YoutubeTask()
 
         # [1단계] 재무 및 상장 검토 (Filter)
         print(f"📊 [1단계] 재무 건전성 및 999일 이평선 검토 중...")
@@ -101,30 +114,34 @@ def run_financial_crew():
 
         print(f"✅ [1단계 통과] {target_company} 합격.")
 
-        # [2단계] 뉴스 리서치 및 종합 분석
-        # 💡 매크로 결과(macro_result)를 시니어 분석가에게 Context로 함께 전달합니다.
+        # [2단계] 뉴스 리서치, 유튜브 뷰어, 종합 분석
         researcher_agent = res_admin.news_researcher()
+        # 🚨 [신규 추가] 유튜브 에이전트 생성
+        youtube_agent = yt_admin.guru_analyst()
         analyst_agent = ana_admin.investment_analyst()
 
         task_research = res_tasks.collect_news_task(researcher_agent, target_company)
+        # 🚨 [신규 추가] 유튜브 영상 검색 및 요약 태스크 생성
+        task_youtube = yt_tasks.extract_guru_view(youtube_agent, target_company)
         
-        # 💡 분석 태스크에 재무결과(acc_result)와 매크로결과(macro_result)를 모두 태워 보냅니다.
+        # 💡 분석 태스크에 재무결과, 매크로결과, 뉴스데이터, 유튜브데이터를 모두 태워 보냅니다.
         task_analysis = ana_tasks.report_writing_task(
             analyst_agent, 
             target_company, 
             acc_result.raw,           # 재무/이평선/배당 데이터
             macro_result.raw,         # 환율/금리/나스닥 데이터
-            [task_research]           # 최신 뉴스 데이터
+            [task_research, task_youtube] # 🚨 [신규 추가] 뉴스 + 유튜브 컨텍스트 동시 전달!
         )
 
+        # 🚨 [수정] 유튜브 에이전트와 태스크를 Crew에 추가
         analysis_crew = Crew(
-            agents=[researcher_agent, analyst_agent],
-            tasks=[task_research, task_analysis],
+            agents=[researcher_agent, youtube_agent, analyst_agent],
+            tasks=[task_research, task_youtube, task_analysis],
             process=Process.sequential,
             verbose=True
         )
         
-        print(f"📰 [2단계] {target_company} 종합 리포트 생성 중...")
+        print(f"📰 [2단계] {target_company} 리서치, 유튜브 분석 및 종합 리포트 생성 중...")
         final_result = analysis_crew.kickoff()
         all_reports.append(f"📈 [{target_company} 최종 리포트]\n{final_result.raw}")
 
@@ -142,14 +159,11 @@ if __name__ == "__main__":
     # 💡 최종 리포트 마크다운 파일 자동 저장 로직 (하루 1개 덮어쓰기)
     # ---------------------------------------------------------
     try:
-        # PM님이 미리 만들어두신 result 폴더를 타겟으로 합니다.
         os.makedirs("result", exist_ok=True) 
         
-        # YYYY-MM-DD 형식으로 파일명 지정 (예: 2026-04-21.md)
         today_str = datetime.now().strftime("%Y-%m-%d")
         file_name = f"result/{today_str}.md"
         
-        # 파일 작성 ("w" 모드이므로 오늘 날짜 안에서는 계속 덮어쓰기가 됩니다)
         with open(file_name, "w", encoding="utf-8") as f:
             f.write(f"> **최근 업데이트 일시:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             f.write(final_output)

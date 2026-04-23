@@ -1,6 +1,6 @@
 # 📈 AI-Reinvest: Multi-Agent Stock Analysis System
 
-CrewAI와 Google Gemini/OpenAI LLM을 활용하여 주식 시장 조사, 재무 분석, 그리고 최종 투자 전략 수립을 자동화하는 지능형 AI 에이전트 시스템입니다. 
+CrewAI와 OpenAI LLM, 그리고 RAG(Retrieval-Augmented Generation) 기술을 활용하여 주식 시장 조사, 재무 분석, 전문가 통찰 융합을 자동화하는 지능형 AI 에이전트 시스템입니다.
 
 ## ✨ 핵심 기능 (Core Features)
 
@@ -8,6 +8,7 @@ CrewAI와 Google Gemini/OpenAI LLM을 활용하여 주식 시장 조사, 재무 
     * `MacroAgent`: 환율, 금리, 나스닥 등 글로벌 거시경제 지표 분석
     * `AccountingAgent`: 재무제표 건전성, 신규 상장 여부, 초장기 이평선(MA999) 퀀트 분석
     * `ResearchAgent`: 타겟 종목의 최신 시장 뉴스 및 센티먼트 수집
+    * `YoutubeAgent`: 인간 구루의 투자 철학과 시황 뷰를 RAG 기반으로 추출
     * `AnalysisAgent`: 위 데이터를 융합하여 최종 투자 의견(Buy/Hold/Sell) 리포트 발행
 * **🛡️ LLM 환각(Hallucination) 원천 방어 시스템:**
     * AI의 숫자/방향성 리딩 오류를 막기 위해 Python 기반의 1차 사전 채점(Pre-scoring) 룰베이스 엔진 탑재 (예: 턴어라운드 로직 `++-` 자동 판별)
@@ -24,6 +25,7 @@ reinvest/
 │   ├── macro/              # 글로벌 거시경제 지표 수집 및 분석
 │   ├── accounting/         # 재무 분석, 퀀트 데이터 추출, 사전 채점
 │   ├── research/           # 최신 뉴스 및 기사 수집
+│   ├── youtube/            # youtube 인사이트 추출 로직
 │   └── analysis/           # 종합 투자 리포트 작성
 ├── requirements.txt        # 의존성 패키지
 └── DEV_LOG.md              # 💡 일자별 개발 일지 및 트러블슈팅 기록
@@ -47,7 +49,15 @@ reinvest/
 **3. 패키지 설치:**
 > pip install -r requirements.txt
 
-**4. 시스템 실행:**
+**4. 지식 베이스(DB) 구축:**
+> python update_youtube_db.py
+>
+> ※ **주의:** 만약 DB 구축이 안 된다면, 아래 명령어로 라이브러리 버전을 잠시 조정한 뒤 재시도하세요.
+> `pip install youtube-transcript-api==0.6.2`
+>
+> (추가 권장) 구축 완료 후 다시 원래 버전으로 복구하려면 pip install -r requirements.txt를 한 번 더 실행해 주세요.
+
+**5. 시스템 실행:**
 > python main.py
 
 ## 📚 개발 일지 및 트러블슈팅

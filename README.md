@@ -27,6 +27,8 @@ reinvest/
 │   ├── research/           # 최신 뉴스 및 기사 수집
 │   ├── youtube/            # youtube 인사이트 추출 로직
 │   └── analysis/           # 종합 투자 리포트 작성
+├── update_youtube_db.py    # 🎥 유튜브 오디오 추출 및 Whisper API 텍스트 변환 스크립트
+├── build_vector_db.py      # 🧠 추출된 텍스트를 로컬 벡터 DB(ChromaDB)로 구축하는 스크립트
 ├── requirements.txt        # 의존성 패키지
 └── DEV_LOG.md              # 💡 일자별 개발 일지 및 트러블슈팅 기록
 ```
@@ -49,13 +51,17 @@ reinvest/
 **3. 패키지 설치:**
 > pip install -r requirements.txt
 
-**4. 지식 베이스(DB) 구축:**
-> python update_youtube_db.py
->
-> ※ **주의:** 만약 DB 구축이 안 된다면, 아래 명령어로 라이브러리 버전을 잠시 조정한 뒤 재시도하세요.
-> `pip install youtube-transcript-api==0.6.2`
->
-> (추가 권장) 구축 완료 후 다시 원래 버전으로 복구하려면 pip install -r requirements.txt를 한 번 더 실행해 주세요.
+**4. 유튜브 지식 베이스(DB) 구축 (2단계 시스템):**
+유튜브의 강력한 봇 차단(429 에러)을 우회하기 위해, 오디오를 다운로드하여 직접 텍스트로 변환한 뒤 DB를 구축합니다.
+
+- **Step 4-1. 오디오 추출 및 텍스트 변환:**
+  > python update_youtube_db.py
+  ※ `transcripts/` 폴더에 영상별 텍스트 파일이 개별 저장됩니다. (OpenAI Whisper API 요금 발생 주의)
+  ※ 무료 변환을 원할 경우 로컬 PC(GPU)에서 `faster-whisper` 모델 등을 사용하도록 코드를 커스텀할 수 있습니다.
+
+- **Step 4-2. 로컬 벡터 DB 생성:**
+  > python build_vector_db.py
+  ※ 추출된 텍스트들을 쪼개어(Chunking) `chroma_db/` 폴더에 RAG 검색용 벡터 DB를 최종 완성합니다.
 
 **5. 시스템 실행:**
 > python main.py

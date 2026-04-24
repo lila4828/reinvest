@@ -18,14 +18,20 @@ class LocalYoutubeSearchTool(BaseTool):
             
         vector_db = Chroma(persist_directory=db_path, embedding_function=embeddings)
         
-        # 2. 질문(query)과 가장 유사한 내용 상위 3개(k=3)만 0.1초 만에 쏙 뽑아오기
-        docs = vector_db.similarity_search(query, k=3)
+        # 2. MMR(Maximal Marginal Relevance) 검색 방식 적용
+        # 💡 유사성뿐만 아니라 '다양성'까지 고려하여 중복되지 않은 상위 3개 추출 (반복 발언 필터링)
+        docs = vector_db.max_marginal_relevance_search(query, k=3, fetch_k=10)
         
         if not docs:
             return f"'{query}'에 대한 주알홍쌤의 언급을 찾을 수 없습니다."
             
         # 3. 뽑아온 조각들을 하나로 합쳐서 에이전트에게 전달
-        result_text = "\n\n---\n\n".join([doc.page_content for doc in docs])
+        formatted_docs = []
+        for doc in docs:
+            meta_header = f"[📅 {doc.metadata.get('date', '알 수 없음')} 방송 | 🎬 {doc.metadata.get('title', '제목 없음')} | ID: {doc.metadata.get('source', '알 수 없음')}]"
+            formatted_docs.append(f"{meta_header}\n{doc.page_content}")
+            
+        result_text = "\n\n---\n\n".join(formatted_docs)
         return f"[검색 키워드: {query}에 대한 홍쌤의 관련 발언 조각들]\n{result_text}"
 
 def get_guru_youtube_tool():

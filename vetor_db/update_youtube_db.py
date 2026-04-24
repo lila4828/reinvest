@@ -10,7 +10,7 @@ load_dotenv()
 def build_local_youtube_db():
     print("🎥 [테스트] youtube_video_ids.txt 파일에서 첫 번째 영상 ID를 읽어옵니다...")
     
-    file_path = "youtube_video_ids.txt"
+    file_path = "vetor_db/youtube_video_ids.txt"
     
     if not os.path.exists(file_path):
         print(f"🚨 파일이 없습니다: {file_path}")
@@ -41,31 +41,52 @@ def build_local_youtube_db():
     print("💰 [비용 알림] 제한을 해제하고 전체 목록에 대해 오디오 추출 및 텍스트 변환을 진행합니다.")
     
     client = OpenAI()
-    test_video_ids = video_ids # 💡 제한 해제: 전체 영상 추출 진행
+    # 🚨 [안전장치] Git 클론 후 실수로 실행하여 발생하는 막대한 API 요금을 방지합니다.
+    # 전체 변환이 필요할 경우 [0:1] 슬라이싱을 제거하고 test_video_ids = video_ids 로 변경하세요.
+    test_video_ids = video_ids[0:1] 
     
     for vid in tqdm(test_video_ids, desc="음성 추출 및 변환 중", ncols=100, colour="blue"):
         transcript_path = f"transcripts/{vid}.txt"
         audio_path = f"audios/{vid}.m4a"
+        meta_path = f"transcripts/{vid}_meta.txt" # 💡 날짜/제목을 저장할 메타데이터 파일
         
-        # 💡 이미 변환된 파일이 있으면 요금/시간 절약을 위해 즉시 스킵! (완벽한 이어하기)
-        if os.path.exists(transcript_path):
-            print(f"\n⏩ [{vid}] 이미 변환된 파일이 존재하여 스킵합니다.")
+        # 💡 자막과 메타데이터가 모두 완벽히 존재할 때만 스킵!
+        if os.path.exists(transcript_path) and os.path.exists(meta_path):
+            print(f"\n⏩ [{vid}] 변환 텍스트와 날짜 정보가 모두 존재하여 스킵합니다.")
             skip_expected_count += 1
             continue
             
         try:
-            # 1. 오디오 파일이 없으면 yt-dlp로 다운로드 (이미 있으면 스킵)
-            if not os.path.exists(audio_path):
-                ydl_opts = {
-                    'format': 'm4a/bestaudio/best',
-                    'outtmpl': audio_path,
-                    'quiet': True,
-                    'no_warnings': True
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # 1. 메타데이터(날짜, 제목) 추출 및 오디오 다운로드
+            ydl_opts = {
+                'format': 'm4a/bestaudio/best',
+                'outtmpl': audio_path,
+                'quiet': True,
+                'no_warnings': True
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # 💡 영상은 받지 않고 정보(날짜/제목)만 1초 만에 빠르게 추출
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={vid}", download=False)
+                title = info.get('title') or '제목 없음'           # 💡 None 값 원천 차단
+                upload_date = info.get('upload_date') or '알수없음' # 💡 None 값 원천 차단
+                
+                if upload_date != '알수없음' and len(upload_date) == 8:
+                    upload_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}" # YYYY-MM-DD 포맷팅
+                    
+                # 메타데이터를 별도 텍스트 파일로 저장
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    f.write(f"{upload_date}\n{title}")
+                
+                # 오디오 파일이 없으면 yt-dlp로 다운로드 (이미 있으면 스킵)
+                if not os.path.exists(audio_path):
                     ydl.download([f"https://www.youtube.com/watch?v={vid}"])
-            else:
-                print(f"\n💡 [{vid}] 오디오 파일이 이미 존재하여 다운로드를 스킵합니다.")
+                else:
+                    print(f"\n💡 [{vid}] 오디오 파일이 이미 존재하여 다운로드를 스킵합니다.")
+                
+            # 💡 자막은 이미 변환해둔 상태라면 메타데이터만 생성한 채로 다음 영상으로 넘어감 (API 요금 절약!)
+            if os.path.exists(transcript_path):
+                print(f"💡 [{vid}] 날짜 및 제목 정보 업데이트 완료! (API 호출 스킵)")
+                continue
                 
             # 2. OpenAI Whisper API(STT)를 호출하여 텍스트로 변환
             with open(audio_path, "rb") as audio_file:

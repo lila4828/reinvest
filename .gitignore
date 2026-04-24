@@ -1,5 +1,15 @@
+# 환경 변수 및 보안
 .env
-__pycache__/
 venv/
+__pycache__/
 *.pyc
+
+# 크롤링 및 로컬 다운로드 파일 (대용량 방지)
+audios/
+
+# 벡터 데이터베이스
 chroma_db/
+
+# OS 및 에디터 숨김 파일
+.DS_Store
+.vscode/

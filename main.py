@@ -14,6 +14,11 @@ from flows.macro.task import MacroTask
 from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
 
+# 유튜브 자동화 파이프라인 임포트
+from vetor_db.fetch_latest_youtube_ids import fetch_and_update_video_ids
+from vetor_db.update_youtube_db_local import build_local_youtube_db_with_gpu
+from vetor_db.build_vector_db import build_db_from_transcripts
+
 # 0. 환경 변수 로드
 load_dotenv()
 
@@ -39,9 +44,23 @@ def run_financial_crew():
     )
 
     # ---------------------------------------------------------
-    # 2. 글로벌 거시경제 분석 (전체 프로세스 시작 전 딱 한 번 수행)
+    # 1. 📺 [자동화] 유튜브 채널 최신 영상 감지 및 RAG DB 자동 업데이트
     # ---------------------------------------------------------
-    print(f"\n🌍 [0단계] 글로벌 거시경제 지표 분석을 시작합니다...")
+    print(f"\n🔄 [0단계] 주알홍쌤 채널의 최신 영상 업데이트를 확인합니다...")
+    TARGET_CHANNEL_URL = "https://www.youtube.com/@주알홍쌤/videos" # 💡 실제 공식 채널 핸들로 변경
+    new_vids = fetch_and_update_video_ids(TARGET_CHANNEL_URL, file_path="vetor_db/youtube_video_ids.txt", fetch_limit=5)
+    
+    if new_vids:
+        print(f"🚨 새로운 영상이 감지되었습니다! 벡터 DB(Chroma) 자동 업데이트를 시작합니다.")
+        build_local_youtube_db_with_gpu() # 무료 로컬 GPU 변환 파이프라인 실행
+        build_db_from_transcripts()       # 새로운 자막을 포함하여 ChromaDB 리빌드
+    else:
+        print("✅ 최신 상태입니다. 기존 유튜브 RAG DB를 그대로 사용합니다.")
+
+    # ---------------------------------------------------------
+    # 2. 🌍 글로벌 거시경제 분석 (전체 프로세스 시작 전 딱 한 번 수행)
+    # ---------------------------------------------------------
+    print(f"\n🌍 [1단계] 글로벌 거시경제 지표 분석을 시작합니다...")
     macro_admin = MacroAgent(fast_llm)
     macro_tasks = MacroTask()
     
@@ -145,7 +164,7 @@ def run_financial_crew():
         final_result = analysis_crew.kickoff()
         all_reports.append(f"📈 [{target_company} 최종 리포트]\n{final_result.raw}")
 
-    return "\n\n" + "★"*60 + "\n\n".join(all_reports)
+    return "\n\n" + "★"*60 + "\n\n" + "\n\n".join(all_reports)
 
 if __name__ == "__main__":
     final_output = run_financial_crew()

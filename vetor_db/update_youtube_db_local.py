@@ -48,7 +48,7 @@ def build_local_youtube_db_with_gpu():
         
         # 💡 자막과 메타데이터가 모두 완벽히 존재할 때만 스킵
         if os.path.exists(transcript_path) and os.path.exists(meta_path):
-            print(f"\n⏩ [{vid}] 변환 텍스트와 날짜 정보가 모두 존재하여 스킵합니다.")
+            # print(f"\n⏩ [{vid}] 변환 텍스트와 날짜 정보가 모두 존재하여 스킵합니다.") # 💡 콘솔창 깔끔하게 유지
             skip_expected_count += 1
             continue
             
@@ -76,16 +76,16 @@ def build_local_youtube_db_with_gpu():
                 # 오디오 파일이 없을 때만 다운로드 진행
                 if not os.path.exists(audio_path):
                     ydl.download([f"https://www.youtube.com/watch?v={vid}"])
-                else:
-                    print(f"\n💡 [{vid}] 오디오 파일 존재함. 다운로드를 스킵합니다.")
+                # else:
+                #     print(f"\n💡 [{vid}] 오디오 파일 존재함. 다운로드를 스킵합니다.")
                     
             # 💡 자막은 이미 변환해둔 상태라면 메타데이터만 생성한 채로 다음 영상으로 넘어감 (시간 절약)
             if os.path.exists(transcript_path):
-                print(f"💡 [{vid}] 날짜 및 제목 정보 업데이트 완료!")
+                # print(f"💡 [{vid}] 날짜 및 제목 정보 업데이트 완료!")
                 continue
                 
             # 2. 로컬 GPU로 Whisper 변환 (STT) 수행
-            print(f"👂 [{vid}] GPU가 오디오를 듣고 텍스트로 타이핑 중입니다...")
+            # print(f"👂 [{vid}] GPU가 오디오를 듣고 텍스트로 타이핑 중입니다...") # 💡 안내문 주석 처리
             start_time = time.time()
             segments, info = model.transcribe(
                 audio_path, 
@@ -114,10 +114,11 @@ def build_local_youtube_db_with_gpu():
             with open(transcript_path, "w", encoding="utf-8") as f:
                 f.write(full_text)
                 
-            print(f"🎉 [{vid}] 변환 성공 및 저장 완료! ({len(full_text)}자) - ⏱️ 소요 시간: {elapsed_time:.2f}초")
+            # print(f"🎉 [{vid}] 변환 성공 및 저장 완료! ({len(full_text)}자) - ⏱️ 소요 시간: {elapsed_time:.2f}초")
             
         except Exception as e:
-            print(f"\n⚠️ [{vid}] 로컬 변환 실패 (사유: {type(e).__name__} - {str(e)})")
+            # 💡 에러 발생 시 진행률 바가 깨지지 않도록 일반 print 대신 tqdm.write 사용
+            tqdm.write(f"⚠️ [{vid}] 로컬 변환 실패 (사유: {type(e).__name__} - {str(e)})")
             skip_other_count += 1
             continue
             

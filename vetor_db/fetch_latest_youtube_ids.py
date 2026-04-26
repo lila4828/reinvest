@@ -53,7 +53,11 @@ def fetch_and_update_video_ids(channel_url, file_path="youtube_video_ids.txt", f
         return []
 
 if __name__ == "__main__":
-    # 💡 실제 주알홍쌤 채널의 공식 핸들로 수정 완료
-    TARGET_CHANNEL_URL = "https://www.youtube.com/@주알홍쌤/videos" 
+    # 💡 일반 영상(videos)과 라이브 방송(streams) 탭을 모두 스캔하도록 리스트로 구성
+    TARGET_CHANNEL_URLS = [
+        "https://www.youtube.com/@주알홍쌤/videos",
+        "https://www.youtube.com/@주알홍쌤/streams"
+    ]
     
-    fetch_and_update_video_ids(TARGET_CHANNEL_URL, file_path="vetor_db/youtube_video_ids.txt", fetch_limit=10)
+    for url in TARGET_CHANNEL_URLS:
+        fetch_and_update_video_ids(url, file_path="vetor_db/youtube_video_ids.txt", fetch_limit=15)

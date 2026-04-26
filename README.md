@@ -57,6 +57,7 @@ reinvest/
 - **Step 4-1. 오디오 추출 및 텍스트 변환:**
   > python update_youtube_db.py
   ※ `transcripts/` 폴더에 영상별 텍스트 파일이 개별 저장됩니다. (OpenAI Whisper API 요금 발생 주의)
+  > python update_youtube_db_local.py
   ※ 무료 변환을 원할 경우 로컬 PC(GPU)에서 `faster-whisper` 모델 등을 사용하도록 코드를 커스텀할 수 있습니다.
 
 - **Step 4-2. 로컬 벡터 DB 생성:**

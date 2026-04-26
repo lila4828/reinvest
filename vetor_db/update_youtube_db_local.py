@@ -2,6 +2,7 @@ import os
 import yt_dlp
 from faster_whisper import WhisperModel
 from tqdm import tqdm
+import time
 
 def build_local_youtube_db_with_gpu():
     print("🎥 [로컬 변환] youtube_video_ids.txt 파일에서 전체 영상 ID를 읽어옵니다...")
@@ -85,22 +86,35 @@ def build_local_youtube_db_with_gpu():
                 
             # 2. 로컬 GPU로 Whisper 변환 (STT) 수행
             print(f"👂 [{vid}] GPU가 오디오를 듣고 텍스트로 타이핑 중입니다...")
+            start_time = time.time()
             segments, info = model.transcribe(
                 audio_path, 
                 beam_size=10,                     # 💡 정확도 최우선: 5(기본값)로 복구. 더 높은 품질을 원하면 10까지 올려도 무방합니다.
                 language="ko",
                 vad_filter=True,                 # 💡 무음 구간 노이즈/환각 방지용으로 유지
                 condition_on_previous_text=True, # 💡 이전 문맥 참조 활성화 (문맥을 이어가며 자연스러운 번역 유도)
-                initial_prompt="이 영상은 주식, 경제, 매수, 매도, ETF 등에 관한 전문 투자 방송입니다. 명확한 문장 부호와 띄어쓰기를 사용하여 한국어로 작성해주세요." # 💡 도메인 힌트 부여 (가독성 및 전문 용어 정확도 극대화)
+                # 💡 Whisper의 initial_prompt는 명령이 아닌 '이전 대화 예시'로 작동합니다.
+                # 마침표와 띄어쓰기가 완벽한 문장을 주면, AI가 이 스타일을 흉내 내어 문장 부호를 찍기 시작합니다.
+                initial_prompt="안녕하세요. 오늘 주식 시장과 ETF, 그리고 매수와 매도 타이밍에 대해 자세히 알아보겠습니다."
             )
             
-            full_text = " ".join([segment.text for segment in segments])
+            text_list = []
+            # 💡 개별 영상의 변환 진행률을 보여주는 보조 진행률 바 추가 (단위: 초)
+            with tqdm(total=round(info.duration, 2), desc="  ▶ 개별 진행률", leave=False, colour="cyan", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}s") as pbar:
+                previous_end = 0
+                for segment in segments:
+                    text_list.append(segment.text)
+                    pbar.update(round(segment.end - previous_end, 2))
+                    previous_end = segment.end
+                
+            full_text = " ".join(text_list)
+            elapsed_time = time.time() - start_time
                 
             # 3. 변환된 텍스트를 개별 파일로 즉시 저장
             with open(transcript_path, "w", encoding="utf-8") as f:
                 f.write(full_text)
                 
-            print(f"🎉 [{vid}] 변환 성공 및 저장 완료! ({len(full_text)}자)")
+            print(f"🎉 [{vid}] 변환 성공 및 저장 완료! ({len(full_text)}자) - ⏱️ 소요 시간: {elapsed_time:.2f}초")
             
         except Exception as e:
             print(f"\n⚠️ [{vid}] 로컬 변환 실패 (사유: {type(e).__name__} - {str(e)})")

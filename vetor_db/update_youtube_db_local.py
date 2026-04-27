@@ -41,7 +41,7 @@ def build_local_youtube_db_with_gpu():
     model = WhisperModel(model_size, device="cuda", compute_type="float16")
     print("✅ 모델 로드 완료! 변환을 시작합니다.\n")
     
-    for vid in tqdm(video_ids, desc="로컬 음성 변환 중", ncols=100, colour="green"):
+    for vid in tqdm(video_ids, desc="로컬 음성 변환 중", ncols=100, colour="green", position=0, leave=True):
         transcript_path = f"transcripts/{vid}.txt"
         audio_path = f"audios/{vid}.m4a"
         meta_path = f"transcripts/{vid}_meta.txt" # 💡 날짜/제목을 저장할 메타데이터 파일
@@ -100,7 +100,7 @@ def build_local_youtube_db_with_gpu():
             
             text_list = []
             # 💡 개별 영상의 변환 진행률을 보여주는 보조 진행률 바 추가 (단위: 초)
-            with tqdm(total=round(info.duration, 2), desc="  ▶ 개별 진행률", leave=False, colour="cyan", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}s") as pbar:
+            with tqdm(total=round(info.duration, 2), desc="  ▶ 개별", leave=False, colour="cyan", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}s", position=1) as pbar:
                 previous_end = 0
                 for segment in segments:
                     text_list.append(segment.text)

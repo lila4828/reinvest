@@ -25,8 +25,11 @@ def build_db_from_transcripts():
     for file_name in files:
         vid = file_name.replace(".txt", "")
         with open(os.path.join(transcripts_dir, file_name), "r", encoding="utf-8") as f:
-            texts.append(f.read())
+            content = f.read().strip()
             
+        if not content:
+            continue
+
         # 💡 만들어둔 메타데이터 파일(날짜, 제목) 가져오기
         meta_path = os.path.join(transcripts_dir, f"{vid}_meta.txt")
         date, title = "날짜 모름", "제목 없음"
@@ -37,13 +40,17 @@ def build_db_from_transcripts():
                 if len(lines) >= 1: date = lines[0]
                 if len(lines) >= 2: title = lines[1]
                 
+        # 💡 [핵심 최적화] RAG 검색 시 쪼개진 조각만 보고도 AI가 문맥을 알 수 있도록 텍스트 자체에 제목/날짜 강제 주입
+        enriched_text = f"[영상 제목: {title}]\n[업로드 날짜: {date}]\n\n{content}"
+        texts.append(enriched_text)
+
         # 꼬리표에 날짜와 제목 추가!
         metadatas.append({"source": vid, "date": date, "title": title})
             
     print("\n🔪 [1단계] 텍스트 쪼개기(Chunking)...")
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=600,        # 💡 한국어 밀도를 고려해 600자(약 1~2분 분량의 발언)로 축소하여 문맥 집중도 향상
-        chunk_overlap=150,     # 💡 문맥 단절을 막기 위한 꼬리 물기 150자
+        chunk_size=1000,       # 💡 구어체 특유의 긴 설명(예: 에베레스트 비유 등)이 중간에 잘리지 않도록 1000자로 확장
+        chunk_overlap=200,     # 💡 문단 구분이 없는 텍스트 특성을 고려해 문맥이 부드럽게 이어지도록 꼬리물기 200자로 확대
         separators=["\n\n", "\n", ". ", "? ", "! ", " ", ""] # 💡 마침표 등 의미가 끝나는 단위에서 우선적으로 자르도록 유도
     )
     chunks = text_splitter.create_documents(texts, metadatas=metadatas)

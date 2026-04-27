@@ -16,7 +16,7 @@ from flows.youtube.task import YoutubeTask
 
 # 유튜브 자동화 파이프라인 임포트
 from vetor_db.fetch_latest_youtube_ids import fetch_and_update_video_ids
-from vetor_db.update_youtube_db_local import build_local_youtube_db_with_gpu
+from vetor_db.update_youtube_db import build_local_youtube_db
 from vetor_db.build_vector_db import build_db_from_transcripts
 
 # 0. 환경 변수 로드
@@ -52,7 +52,7 @@ def run_financial_crew():
     
     if new_vids:
         print(f"🚨 새로운 영상이 감지되었습니다! 벡터 DB(Chroma) 자동 업데이트를 시작합니다.")
-        build_local_youtube_db_with_gpu() # 무료 로컬 GPU 변환 파이프라인 실행
+        build_local_youtube_db() # 💡 로컬(faster-whisper) 대신 OpenAI Whisper API 파이프라인 실행
         build_db_from_transcripts()       # 새로운 자막을 포함하여 ChromaDB 리빌드
     else:
         print("✅ 최신 상태입니다. 기존 유튜브 RAG DB를 그대로 사용합니다.")
@@ -79,13 +79,9 @@ def run_financial_crew():
     # 3. 다중 종목 스캔 루프 (옵션 C: 3개 종목 연속 처리)
     # ---------------------------------------------------------
     stock_pool = [
-        # [1번: 신규 상장주] - MA999 등 장기 데이터 부재 시 FAIL 처리 확인
-        ("477380.KQ", "에이치비인베스트먼트"), 
-        # [2번: 적자 지속 테마주] - 뉴스는 화려하지만 재무는 엉망일 때 o3-mini의 'Sell' 의견 확인
+        # [1번: 적자 지속 테마주] - 뉴스는 화려하지만 재무는 엉망일 때 o3-mini의 'Sell' 의견 확인
         ("041020.KQ", "폴라리스오피스"), 
-        # [3번: 변동성 끝판왕] - 최근 이슈가 많아 뉴스 팩트가 꼬이기 쉬운 종목
-        ("003670.KS", "포스코홀딩스"), 
-        # [4번: 해외 주식] - 야후 파이낸스 티커 호환성 및 환율 반영 로직 테스트
+        # [2번: 해외 주식] - 야후 파이낸스 티커 호환성 및 환율 반영 로직 테스트
         ("TSLA", "테슬라"), 
         # [대조군] - 우리 시스템의 기준점이 되는 대장주
         ("005930.KS", "삼성전자")
@@ -108,7 +104,6 @@ def run_financial_crew():
         res_tasks = ResearchTask()
         ana_admin = AnalysisAgent(smart_llm)      
         ana_tasks = AnalysisTask()
-        # 🚨 [신규 추가] 유튜브 어드민 소집 (정확한 요약을 위해 추론 모델 사용)
         yt_admin = YoutubeAgent(fact_llm)
         yt_tasks = YoutubeTask()
 

@@ -41,9 +41,7 @@ def build_local_youtube_db():
     print("💰 [비용 알림] 제한을 해제하고 전체 목록에 대해 오디오 추출 및 텍스트 변환을 진행합니다.")
     
     client = OpenAI()
-    # 🚨 [안전장치] Git 클론 후 실수로 실행하여 발생하는 막대한 API 요금을 방지합니다.
-    # 전체 변환이 필요할 경우 [0:1] 슬라이싱을 제거하고 test_video_ids = video_ids 로 변경하세요.
-    test_video_ids = video_ids[0:1] 
+    test_video_ids = video_ids
     
     for vid in tqdm(test_video_ids, desc="음성 추출 및 변환 중", ncols=100, colour="blue"):
         transcript_path = f"transcripts/{vid}.txt"

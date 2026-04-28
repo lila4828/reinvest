@@ -53,29 +53,36 @@ ai-reinvest/
 
 - **Windows:**
   > cd backend
-  > python -m venv venv
+  > python -m venv venv(처음 한번만 실행)
   > .\venv\Scripts\activate
 
 - **Mac/Linux:**
   > cd backend
-  > python3 -m venv venv
+  > python3 -m venv venv(처음 한번만 실행)
   > source venv/bin/activate
 
 **3. 백엔드 패키지 설치:**
-> pip install -r requirements.txt
+> python -m pip install -r requirements.txt
 
 **4. 유튜브 지식 베이스(DB) 구축 (2단계 시스템):**
 `backend` 폴더 위치에서 스크립트를 실행하여 유튜브 오디오를 텍스트로 변환한 뒤 DB를 구축합니다.
 
 - **Step 4-1. 오디오 추출 및 텍스트 변환:**
-  > python update_youtube_db.py
+  ※ 💡 **이미 텍스트 변환 작업이 완료되어 제공되므로, 이 단계는 건너뛰고 바로 Step 4-2로 진행하시길 바랍니다.**
+
+  ```bash
+  python .\vector_db\update_youtube_db.py
+  ```
   ※ `transcripts/` 폴더에 영상별 텍스트 파일이 개별 저장됩니다. (OpenAI Whisper API 요금 발생 주의)
-  > python update_youtube_db_local.py
+  
+  ```bash
+  python .\vector_db\update_youtube_db_local.py
+  ```
   ※ 무료 변환을 원할 경우 로컬 PC(GPU)에서 `faster-whisper` 모델 등을 사용하도록 코드를 커스텀할 수 있습니다.
   ※ ⚠️ **소요 시간 참고:** 1시간 분량 영상 400개, 10분 분량 영상 415개 기준, RTX 3070 GPU 환경에서 전체 변환에 약 3일이 소요되었습니다. 데이터 양과 PC 스펙에 따라 시간이 오래 걸릴 수 있습니다.
 
 - **Step 4-2. 로컬 벡터 DB 생성:**
-  > python build_vector_db.py
+  > python .\vector_db\build_vector_db.py
   ※ 추출된 텍스트들을 쪼개어(Chunking) `chroma_db/` 폴더에 RAG 검색용 벡터 DB를 최종 완성합니다.
 
 **5. 시스템 실행 (AI 분석 및 API 서버):**

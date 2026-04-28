@@ -1,0 +1,17 @@
+/* 전역 변수 설정 */
+:root {
+  --bg-color: #f8f9fa;
+  --primary-color: #0d6efd;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-color);
+}
+
+/* OncoCare 공통 레이아웃 래퍼 */
+.main-content {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}

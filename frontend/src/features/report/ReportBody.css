@@ -1,0 +1,52 @@
+/* 마크다운 본문 스타일링 (증권사 리포트 느낌) */
+.markdown-content {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #333;
+}
+
+.markdown-content h1, 
+.markdown-content h2, 
+.markdown-content h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-weight: 700;
+  color: #111;
+}
+
+.markdown-content h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+}
+
+.markdown-content th, 
+.markdown-content td {
+  border: 1px solid #dee2e6;
+  padding: 12px;
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: #f8f9fa;
+  font-weight: bold;
+  color: #495057;
+}
+
+.markdown-content blockquote {
+  margin: 1.5em 0;
+  padding: 1em 1.5em;
+  border-left: 4px solid #0d6efd;
+  background-color: #f8f9fa;
+  color: #555;
+  font-style: italic;
+}
+
+.markdown-content strong {
+  color: #0d6efd; /* 강조 텍스트를 브랜드 컬러(파란색)로 포인트 */
+}

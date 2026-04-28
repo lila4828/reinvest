@@ -1,7 +1,7 @@
 import React from 'react';
 import './ReportBody.css';
-import ReportList from './ReportList.jsx';
-import ReportDetail from './ReportDetail.jsx';
+import ReportList from './ReportList';
+import ReportDetail from './ReportDetail';
 import { useReports } from './useReports';
 
 function ReportBody() {

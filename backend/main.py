@@ -15,9 +15,9 @@ from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
 
 # 유튜브 자동화 파이프라인 임포트
-from vetor_db.fetch_latest_youtube_ids import fetch_and_update_video_ids
-from vetor_db.update_youtube_db import build_local_youtube_db
-from vetor_db.build_vector_db import build_db_from_transcripts
+from vector_db.fetch_latest_youtube_ids import fetch_and_update_video_ids
+from vector_db.update_youtube_db import build_local_youtube_db
+from vector_db.build_vector_db import build_db_from_transcripts
 
 # 0. 환경 변수 로드
 load_dotenv()
@@ -27,20 +27,20 @@ def run_financial_crew():
     fast_llm = LLM(
         model="gpt-4o-mini",
         api_key=os.getenv('OPENAI_API_KEY'),
-        stream=True #LLM 동작모습 확인(배포시 삭제)
+        stream=True # LLM 동작모습 확인(배포시 삭제)
     )
     # 1-2. 리서치 전용 모델(환각 원천 차단 및 긴 자막 요약)
     fact_llm = LLM(
         model="o3-mini",
         api_key=os.getenv('OPENAI_API_KEY'),
-        stream=True #LLM 동작모습 확인(배포시 삭제)
+        stream=True # LLM 동작모습 확인(배포시 삭제)
     )
     # 1-3. 깊은 사고용 모델 (최종 투자 전략 분석)
     smart_llm = LLM(
         model="gpt-5.4",
         api_key=os.getenv('OPENAI_API_KEY'),
         temperature=0.4,
-        stream=True #LLM 동작모습 확인(배포시 삭제)
+        stream=True # LLM 동작모습 확인(배포시 삭제)
     )
 
     # ---------------------------------------------------------
@@ -48,7 +48,7 @@ def run_financial_crew():
     # ---------------------------------------------------------
     print(f"\n🔄 [0단계] 주알홍쌤 채널의 최신 영상 업데이트를 확인합니다...")
     TARGET_CHANNEL_URL = "https://www.youtube.com/@주알홍쌤/videos" # 💡 실제 공식 채널 핸들로 변경
-    new_vids = fetch_and_update_video_ids(TARGET_CHANNEL_URL, file_path="vetor_db/youtube_video_ids.txt", fetch_limit=5)
+    new_vids = fetch_and_update_video_ids(TARGET_CHANNEL_URL, file_path="vector_db/youtube_video_ids.txt", fetch_limit=5)
     
     if new_vids:
         print(f"🚨 새로운 영상이 감지되었습니다! 벡터 DB(Chroma) 자동 업데이트를 시작합니다.")

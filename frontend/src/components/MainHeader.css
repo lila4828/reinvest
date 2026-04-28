@@ -1,0 +1,8 @@
+.logo-link {
+  transition: all 0.2s ease-in-out;
+}
+
+.logo-link:hover {
+  transform: scale(1.03); /* 마우스 올렸을 때 살짝 커지는 효과 */
+  opacity: 0.8; /* 색상이 살짝 어두워지는 효과 */
+}

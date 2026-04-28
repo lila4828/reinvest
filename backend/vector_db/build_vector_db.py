@@ -7,7 +7,11 @@ from langchain_community.vectorstores import Chroma
 load_dotenv()
 
 def build_db_from_transcripts():
-    transcripts_dir = "transcripts"
+    # 💡 [수정] 스크립트 파일의 위치를 기준으로 절대 경로 설정 (어디서 실행하든 경로 보장)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.abspath(os.path.join(script_dir, '..'))
+    transcripts_dir = os.path.join(backend_dir, "transcripts")
+
     if not os.path.exists(transcripts_dir):
         print(f"🚨 '{transcripts_dir}' 폴더가 없습니다. 먼저 텍스트 추출을 완료해주세요.")
         return

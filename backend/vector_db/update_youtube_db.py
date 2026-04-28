@@ -10,7 +10,7 @@ load_dotenv()
 def build_local_youtube_db():
     print("🎥 [테스트] youtube_video_ids.txt 파일에서 첫 번째 영상 ID를 읽어옵니다...")
     
-    file_path = "vetor_db/youtube_video_ids.txt"
+    file_path = "vector_db/youtube_video_ids.txt"
     
     if not os.path.exists(file_path):
         print(f"🚨 파일이 없습니다: {file_path}")
@@ -29,11 +29,16 @@ def build_local_youtube_db():
     except Exception as e:
         print(f"🚨 파일 읽기 실패: {e}")
         return
-        
-    # 💡 텍스트 파일을 개별 저장할 폴더를 생성합니다.
-    os.makedirs("transcripts", exist_ok=True)
-    # 💡 오디오 파일을 개별 저장할 폴더를 생성합니다.
-    os.makedirs("audios", exist_ok=True)
+
+    # 💡 [수정] 스크립트 파일의 위치를 기준으로 절대 경로 설정 (어디서 실행하든 경로 보장)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.abspath(os.path.join(script_dir, '..'))
+
+    transcripts_dir = os.path.join(backend_dir, "transcripts")
+    audios_dir = os.path.join(backend_dir, "audios")
+
+    os.makedirs(transcripts_dir, exist_ok=True)
+    os.makedirs(audios_dir, exist_ok=True)
     
     skip_expected_count = 0
     skip_other_count = 0
@@ -44,9 +49,9 @@ def build_local_youtube_db():
     test_video_ids = video_ids
     
     for vid in tqdm(test_video_ids, desc="음성 추출 및 변환 중", ncols=100, colour="blue"):
-        transcript_path = f"transcripts/{vid}.txt"
-        audio_path = f"audios/{vid}.m4a"
-        meta_path = f"transcripts/{vid}_meta.txt" # 💡 날짜/제목을 저장할 메타데이터 파일
+        transcript_path = os.path.join(transcripts_dir, f"{vid}.txt")
+        audio_path = os.path.join(audios_dir, f"{vid}.m4a")
+        meta_path = os.path.join(transcripts_dir, f"{vid}_meta.txt") # 💡 날짜/제목을 저장할 메타데이터 파일
         
         # 💡 자막과 메타데이터가 모두 완벽히 존재할 때만 스킵!
         if os.path.exists(transcript_path) and os.path.exists(meta_path):

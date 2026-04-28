@@ -58,6 +58,10 @@ if __name__ == "__main__":
         "https://www.youtube.com/@주알홍쌤/videos",
         "https://www.youtube.com/@주알홍쌤/streams"
     ]
-    
+
+    # 💡 [수정] 스크립트 파일의 위치를 기준으로 절대 경로 설정 (어디서 실행하든 경로 보장)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    target_file_path = os.path.join(script_dir, "youtube_video_ids.txt")
+
     for url in TARGET_CHANNEL_URLS:
-        fetch_and_update_video_ids(url, file_path="vetor_db/youtube_video_ids.txt", fetch_limit=15)
+        fetch_and_update_video_ids(url, file_path=target_file_path, fetch_limit=15)

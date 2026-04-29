@@ -1,41 +1,48 @@
 from crewai import Task
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+
+class AccountingOutput(BaseModel):
+    ticker: str = Field(description="티커")
+    current_price: Optional[float] = Field(description="현재 주가")
+    per: Optional[float] = Field(description="PER")
+    pbr: Optional[float] = Field(description="PBR")
+    dividend_yield: Optional[float] = Field(description="배당 수익률(%)")
+    ma_60: Optional[float] = Field(description="60일 이동평균선")
+    ma_200: Optional[float] = Field(description="200일 이동평균선")
+    ma_350: Optional[float] = Field(description="350일 이동평균선")
+    ma_500: Optional[float] = Field(description="500일 이동평균선")
+    ma_999: Optional[float] = Field(description="999일 이동평균선")
+    roe_raw: Optional[float] = Field(description="ROE 원본 수치(%)")
+    roe_label: str = Field(description="ROE 평가 라벨")
+    revenue: List[float] = Field(description="최근 3개년 매출 배열, 과거 -> 최근 순서")
+    net_income: List[float] = Field(description="최근 3개년 순이익 배열, 과거 -> 최근 순서")
+    fcf: List[float] = Field(description="최근 3개년 FCF 배열, 과거 -> 최근 순서")
+    debt_to_equity: Optional[float] = Field(description="부채비율")
+    operating_margin: Optional[float] = Field(description="영업이익률(%)")
+    sector: str = Field(description="섹터")
+    industry: str = Field(description="산업")
+    financial_summary: str = Field(description="재무 상태 요약")
+    is_data_valid: bool = Field(description="3개년 재무 데이터 정상 수집 여부")
+    error: Optional[str] = Field(description="오류 메시지")
+
 
 class AccountingTask:
     def analyze_financial_statements(self, agent, company_name, ticker):
         return Task(
             description=f'''
             'Fetch Financial Data API' 도구를 사용하여 {company_name}({ticker})의 재무 데이터를 가져오세요.
-            
-            [기계적인 판정 알고리즘 - 반드시 아래 순서대로만 검사하세요]
-            당신의 주관적인 판단은 철저히 배제하고, 오직 [사전 채점] 결과에 따라 기계적으로 판정하세요.
 
-            1단계 (신규 상장 검사): 
-            - 도구 결과에 '상장된 지 1년이 되지 않은'이라는 문구가 있다면 -> 즉시 "FAIL" (사유: 신규 상장)
-            
-            2단계 (안정성 검사 - 완전 탈락): 
-            - [사전 채점 1]에 'FAIL 대상' 문구가 있다면 -> 즉시 "FAIL" (사유: 연속 적자 등 기준 미달)
-            - [사전 채점 2]에 'FAIL 대상' 문구가 있다면 -> 즉시 "FAIL" (사유: 고부채 위험)
-            
-            3단계 (안정성 검사 - 경고 합격):
-            - 💡 [사전 채점 1] 또는 [사전 채점 3]에 'WARNING 대상' 문구가 있다면 -> 최종 판정은 "PASS"로 하되, 사유에 반드시 강력한 경고(예: 주의 - 불안정한 적자 이력 또는 위험한 현금흐름 패턴)를 명시하세요.
-
-            4단계 (무조건 합격): 
-            - 위 1, 2, 3단계에 해당하지 않는다면 무조건 "PASS" 라고 판정해야 합니다!!
-            
-            💡 [매우 중요한 데이터 전달 지침]:
-            - 도구가 제공한 [산업군], [배당 수익률], [ROE], [YoY 성장률], [장기 이동평균선], [현금흐름 패턴] 등은 당신이 임의로 평가할 항목이 아닙니다.
-            - 단, 이 정보들은 다음 단계의 '시니어 애널리스트'가 분석에 사용할 핵심 퀀트 데이터이므로, 리포트에 누락 없이 그대로 복사해서 포함시켜야 합니다.
-            - 🚨 매출, 순이익, FCF 데이터 역시 다음 에이전트가 시간 순서를 헷갈리지 않도록 반드시 '(최근) X -> (1년전) Y -> (2년전) Z' 형태의 텍스트 그대로 리포트에 전달하세요.
-            
-            [최종 작성 양식]
-            1. 최종 판정: PASS 또는 FAIL (경고 시 'PASS (주의)'로 표기)
-            2. 판정 사유: (간략하게 트렌드 기호를 포함하여 설명)
-            3. 산업군 및 가치 지표: (섹터, 현재 주가, PER, PBR, ROE, 배당 수익률)
-            4. 단기 성장성 (YoY): (매출 YoY, 순이익 YoY 수치 나열)
-            5. 장기 이평선 (MA): (MA60~999 수치 나열)
-            6. 🚨 현금흐름 패턴: ([사전 채점 3]의 결과 텍스트 그대로 복사)
-            7. 재무 요약: (매출, 순이익, FCF 텍스트 데이터 나열)
+            🚨 핵심 규칙:
+            - 도구가 반환하는 JSON 값을 그대로 AccountingOutput 스키마에 매핑하세요.
+            - revenue, net_income, fcf 배열 순서는 반드시 과거 -> 최근 순서입니다.
+            - 숫자를 새로 계산하거나 임의로 보정하지 마세요.
+            - 도구 JSON의 null 값은 null 그대로 유지하세요.
+            - 도구 JSON의 is_data_valid가 false이면 반드시 is_data_valid를 false로 반환하세요.
+            - PASS/FAIL 판단은 하지 마세요. 이후 main.py의 Python 룰베이스가 처리합니다.
             ''',
-            expected_output=f'{company_name}의 핵심 지표 요약 및 최종 기계적 판정 (PASS/FAIL)',
-            agent=agent
+            expected_output=f'{company_name}의 구조화된 재무 JSON',
+            agent=agent,
+            output_pydantic=AccountingOutput,
         )

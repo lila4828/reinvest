@@ -1,85 +1,112 @@
 from crewai import Task
+from pydantic import BaseModel, Field
+from typing import List
+
+
+class ChartData(BaseModel):
+    period: str = Field(description="예: T-2, T-1, T")
+    revenue: float = Field(description="매출")
+    net_profit: float = Field(description="순이익")
+    fcf: float = Field(description="잉여현금흐름(FCF)")
+
+
+class AnalysisOutput(BaseModel):
+    investment_opinion: str = Field(description="최종 투자 의견, 시스템 산출값 그대로 사용")
+    one_line_conclusion: str = Field(description="수석 애널리스트 한 줄 결론, 40자 이내")
+    executive_summary: List[str] = Field(description="정확히 3개 항목")
+    macro_analysis: str = Field(description="매크로 및 시장 환경 분석, 700자 이내")
+    fundamental_analysis: str = Field(description="펀더멘털 및 퀀트 분석, 900자 이내")
+    momentum_analysis: str = Field(description="비즈니스 모멘텀 분석, 700자 이내")
+    guru_analysis: str = Field(description="구루의 시선 분석, 700자 이내")
+    final_conclusion: str = Field(description="수석 애널리스트 종합 결론, 900자 이내")
+    chart_data: List[ChartData] = Field(description="최근 3개년 실적 차트 데이터, T-2/T-1/T 순서")
+
 
 class AnalysisTask:
-    def report_writing_task(self, agent, company_name, accounting_data, macro_data, context_tasks):
+    def report_writing_task(
+        self,
+        agent,
+        company_name,
+        accounting_data,
+        macro_data,
+        news_data,
+        youtube_data,
+        final_opinion,
+        target_buy_price,
+        defense_price,
+    ):
+        target_buy_price_text = "N/A" if target_buy_price is None else f"{target_buy_price:,.2f}"
+        defense_price_text = "N/A" if defense_price is None else f"{defense_price:,.2f}"
+
         return Task(
             description=f'''
-            당신은 최종 결정권자인 여의도 탑티어 수석 애널리스트입니다. 
-            아래 제공된 [거시경제 데이터]와 [재무 채점 데이터], 그리고 리서치 에이전트 및 유튜브 에이전트가 수집한 [최신 뉴스 & 구루 인사이트 컨텍스트]를 모두 융합하여 {company_name}에 대한 최종 투자 리포트를 작성하세요.
+            당신은 최종 결정권자인 여의도 탑티어 수석 애널리스트입니다.
+            아래 제공된 압축 데이터를 기반으로 {company_name}의 최종 투자 분석 JSON을 작성하세요.
 
             [입력 데이터]
-            1. 거시경제 시황(Macro): \n{macro_data}\n
-            2. 재무 팩트(Accounting): \n{accounting_data}\n
-            3. 최신 뉴스 및 유튜브 인사이트: 🚨(시스템이 프롬프트 하단 'Context' 영역에 첨부해준 리서치팀의 뉴스 요약과 주알홍쌤 유튜브 요약본을 반드시 찾아 읽고 반영하세요.)
+            1. 거시경제 시황(Macro):
+            {macro_data}
 
-            💡 [작성 엄수 규칙 및 리포트 품격 향상 지침]
-            - 🚨 [가격 정보 매칭]: 리포트 상단 테이블의 '현재가'는 제공된 실제 현재가 수치를 사용하고, '권장 매수가'는 MA60(60일 이평선), '하락 시 방어선'은 MA200(200일 이평선) 수치를 데이터에서 추출하여 정확히 기입하세요. (절대 숫자를 임의로 생성하지 마세요)
-            - 🚨 [TOP-DOWN 배치]: 리포트의 시작은 무조건 '가격/투자 의견 테이블'과 '한 줄 결론'이어야 합니다. 바쁜 투자자가 즉시 의사결정을 할 수 있게 최상단에 배치하세요.
-            - 🚨 [실적 팩트 체크]: 뉴스 데이터 중 실적 수치가 충돌할 경우(예: 50조 전망 vs 57조 확정), 반드시 '발표/확정/달성'과 같은 완료형 키워드가 포함된 최신 데이터를 최우선으로 반영하세요. 추측성 '전망/예상' 데이터는 철저히 배제합니다.
-            - 🚨 숫자 가독성: PER, ROE 등 모든 지표는 소수점 둘째 자리에서 반올림하여 깔끔하게 작성하세요. (예: 5.378128 -> 5.38)
-            - 🚨 화폐 단위: 매출이나 순이익, FCF 같은 큰 숫자는 0을 나열하지 말고 '조' 또는 '억' 단위로 간결하게 변환하여 표현하세요. (예: 333조 6,059억 원)
-            - 🚨 PBR 보정: 만약 제공된 PBR이 N/A라면 억지로 표기하지 말고 생략하거나, 장부가치 대비 현재 주가 수준을 다른 지표로 대체하여 논리적으로 설명하세요.
-            - 🚨 [문체 및 구조]: 교과서처럼 길게 나열하는 서술형(줄글)을 피하고, 핵심만 명확하게 전달하는 '개조식(-, *)' 위주로 작성하세요.
-            - 🚨 [매크로 입체 분석]: 거시경제 데이터(특히 환율 등) 해석 시 단편적으로 보지 마세요. 고환율이 {company_name}의 '수출 실적'에는 어떤 호재가 되는지, 반대로 '외국인 수급(자금 이탈)'에는 어떤 악재가 되는지 양면성(Duality)을 저울질하여 입체적인 시각을 제공하세요. 시스템이 주입한 매크로 경고 힌트는 리포트 최상단에 즉시 반영해야 합니다.
-            - 🚨 [필수 지표 포함]: 거시경제 데이터에 포함된 'WTI 원유'와 'VIX 공포지수' 수치는 절대 누락하지 말고 매크로 섹션에 명시하세요.
-            - 🚨 [데이터 보존]: 리포트 3번 섹션 하단에 3개년 매출, 이익, FCF 추이 및 이평선 데이터를 표(Table) 형태로 누락 없이 정리하세요. (그래프 생성용 로우 데이터 역할)
-            - 🚨 [구루의 시선 활용]: 4번 섹션에는 유튜브 에이전트가 가져온 '주알홍쌤'의 뷰를 작성하되, 맹목적인 찬양이 아닌 현재 매크로/재무 상황과 연결하여 투자 마인드셋을 다잡는 용도로 서술하세요.
-            - 최종 투자 의견은 [Strong Buy / Buy / Hold / Sell] 중 하나로 명확히 제시하세요.
-            
-            [최종 리포트 마크다운 양식]
-            # 📈 {company_name} 심층 투자 전략 리포트
-            
-            | 구분 | 가격 정보 | 투자 의견 |
-            | :--- | :--- | :--- |
-            | **현재가** | (데이터에서 추출한 현재가) | **[Strong Buy / Buy / Hold / Sell]** |
-            | **권장 매수가** | (MA60 기반 수치) | 적정 비중 매수 권고 |
-            | **하락 시 방어선** | (MA200 기반 수치) | 분할 매수 및 비중 확대 |
+            2. 재무 팩트(Accounting):
+            {accounting_data}
 
-            ### 💡 수석 애널리스트 한 줄 결론
-            > **(밑의 1~4를 종합하여 이 주식을 지금 매수/매도/관망해야 하는지에 대한 명확한 전략과 논리 한 줄 결론)**
-            
-            ### 🎯 3줄 요약 (Executive Summary)
-            - (기업 펀더멘털 핵심 요약)
-            - (현재 직면한 매크로 양면성 및 시장 환경 요약)
-            - (주가 방향성을 결정지을 단기 뉴스 모멘텀 및 구루의 시선)
+            3. 최신 뉴스(Research):
+            {news_data}
 
-            ---
+            4. 구루 인사이트(YouTube):
+            {youtube_data}
 
-            ## 1. 🌍 매크로 및 시장 환경
-            (거시경제 힌트와 양면성 분석을 바탕으로 현재 시장의 리스크와 우호적 요인을 개조식으로 분석)
-            - **WTI 원유 및 VIX 공포지수**: (현재 수치 및 글로벌 투자 심리/인플레이션 압력 진단)
-            - 
-            - 
+            🚨 [절대 규칙]
+            1. investment_opinion은 시스템 산출값 **{final_opinion}**을 반드시 그대로 사용하세요.
+               - Strong Buy, Buy, Hold, Sell 중 하나를 임의 변경하지 마세요.
+               - 본문과 결론도 이 의견과 충돌하지 않게 작성하세요.
+               - 예: investment_opinion이 Buy이면 최종 결론을 Sell/회피처럼 쓰지 마세요.
+               - 단, 리스크는 별도 문장으로 균형 있게 언급하세요.
 
-            ## 2. 📊 펀더멘털 및 퀀트 분석
-            (회계 데이터의 수익성, 현금흐름, 단기 성장성(YoY), 장기 이평선, 재무 건전성을 개조식으로 종합 평가)
-            - 
-            - 
+            2. 시스템 산출 가격 가이드:
+               - 권장 매수가: {target_buy_price_text}
+               - 하락 시 방어선/저항선: {defense_price_text}
+               - 가격이 N/A이면 가격 전략을 억지로 만들지 말고 데이터 부족이라고 쓰세요.
 
-            ## 3. 📰 비즈니스 모멘텀 (최신 뉴스)
-            (리서치팀이 가져온 핵심 뉴스를 기반으로 단기 주가 촉매제 분석)
-            (※ 이 섹션의 데이터는 향후 시각화 차트 생성에 활용되므로 정확한 수치를 기입하세요.)
-            - **재무 상태 판정**: [PASS/FAIL]
-            - **밸류에이션**: PER, ROE, 배당수익률 등 요약
-            - **실적 추이 테이블**:
-              | 항목 | 최근(T) | 1년 전(T-1) | 2년 전(T-2) | YoY 성장률 |
-              | :--- | :--- | :--- | :--- | :--- |
-              | 매출 | | | | |
-              | 순이익 | | | | |
-              | FCF | | | | |
-            - **이평선 상세**: MA60, MA200, MA999 등 수치 나열
-            - 
-            - 
+            3. 재무 수치 근거:
+               - 실적 수치, PER, PBR, ROE, 이동평균선은 반드시 Accounting 데이터만 사용하세요.
+               - 뉴스에 나온 매출/이익 숫자는 사용하지 마세요.
+               - revenue, net_income, fcf 배열은 과거 -> 최근 순서입니다.
+               - 본문에 재무 수치를 쓸 때는 원본 숫자를 그대로 쓰지 말고 보기 쉬운 단위로 변환하세요.
+               - 한국 종목은 매출, 순이익, FCF를 조원/억원 단위로 변환해 서술하세요.
+                 예: 333605938000000.0 → 약 333.6조원
+                 예: 4859947610.0 → 약 48.6억원
+               - 미국 종목은 매출, 순이익, FCF를 B/M 달러 단위로 변환해 서술하세요.
+                 예: 94827000000.0 → 약 $94.8B
+                 예: 3794000000.0 → 약 $3.8B
+               - PER, PBR, ROE, 부채비율, 영업이익률, 이동평균선, 현재가는 원본 수치에 가깝게 사용하되 소수점은 과도하게 길게 쓰지 마세요.
+                 예: PER 5.5500317 → PER 5.55배
+                 예: ROE 10.78 → ROE 10.78%
+                 예: current_price 226000.0 → 226,000원
+               - chart_data는 반드시 다음 순서로 만드세요:
+                 T-2 = 배열[0]
+                 T-1 = 배열[1]
+                 T = 배열[2]
+               - chart_data 배열에는 Accounting 데이터의 원본 float 숫자를 그대로 넣으세요.
 
-            ## 4. 📺 구루의 시선 (주알홍쌤 인사이트)
-            (Context에서 추출한 주알홍쌤 채널의 투자 인사이트, 심리, 또는 해당 종목에 대한 뷰를 2~3줄의 개조식으로 정리)
-            - 
-            - 
+            4. 유튜브 데이터 해석:
+               - content_type이 MARKET이면 개별 종목 추천으로 해석하지 마세요.
+               - MARKET이면 시장 대응 전략/리스크 관리 참고 자료로만 사용하세요.
+               - content_type이 N/A이거나 is_data_valid가 false이면 구루 분석에는 "유의미한 직접 발언 없음"이라고 쓰세요.
 
-            ## 5. 💡 수석 애널리스트 종합 결론
-            (위 1, 2, 3, 4를 종합하여 이 주식을 지금 매수/매도/관망해야 하는지에 대한 명확한 전략과 논리 제시)
+            5. 출력 길이 제한:
+               - executive_summary는 정확히 3개만 작성하세요.
+               - 각 분석 필드는 짧고 밀도 있게 작성하세요.
+               - 불필요한 미사여구 금지.
+               - 마크다운 문법 금지.
+               - 표 금지.
+               - JSON/Pydantic 스키마에 맞는 값만 반환하세요.
+
+            6. 환각 방지:
+               - 입력 데이터에 없는 숫자, 목표가, 상승률, 기사 제목, 발언을 만들지 마세요.
+               - 모르는 내용은 데이터 부족으로 명시하세요.
             ''',
-            expected_output=f'{company_name}에 대한 가독성이 뛰어나고 가격 가이드가 포함된 완벽한 마크다운 형식과 하단에 시각화용 데이터 테이블 및 유튜브 인사이트가 포함된 종합 투자 리포트',
+            expected_output=f'{company_name}에 대한 구조화된 투자 분석 JSON',
             agent=agent,
-            context=context_tasks
+            output_pydantic=AnalysisOutput,
         )

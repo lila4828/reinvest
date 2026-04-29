@@ -1,25 +1,72 @@
 from crewai import Task
 from datetime import datetime
+from pydantic import BaseModel, Field
+
+
+class ResearchOutput(BaseModel):
+    sentiment_score: float = Field(description="최신 뉴스 기반 주가 센티먼트 점수, 0.0~100.0, 50은 중립")
+    momentum_strength: str = Field(description="단기 뉴스 모멘텀 강도, HIGH/MEDIUM/LOW")
+    news_summary: str = Field(description="핵심 뉴스 요약 및 인사이트, 재무 수치 제외")
+    is_data_valid: bool = Field(description="실제 최신 뉴스를 정상 수집했는지 여부")
+
 
 class ResearchTask:
     def collect_news_task(self, agent, company_name):
         today_date = datetime.now().strftime("%Y-%m-%d")
-        
+
         return Task(
             description=f'''
-            오늘({today_date}) 기준으로 {company_name}의 주가 방향성을 판단하기 위한 가장 중요한 최신 뉴스 3개를 수집하세요.
-            💡 (주의: 당일 작성된 기사가 없다면, 최근 1~2주일 내에 보도된 가장 의미 있는 최신 기사를 활용해도 무방합니다.)
-            아래 3가지 앵글로 각각 검색어를 다르게 하여 정보를 찾아야 합니다:
-            
-            1. 매크로 충격: 미국 기준금리/국채금리 또는 환율 변동이 {company_name}의 비즈니스에 미치는 영향을 다룬 심층 분석 기사
-            2. 산업/경쟁사 동향: {company_name}의 주력 비즈니스(예: 반도체, 바이오 등) 수급 트렌드 및 경쟁사 비교
-            3. 실적/목표가: 최근 한 달 내 주요 증권사들이 발표한 {company_name} 목표가 변경 리포트나 최신 실적 발표(팩트) 기사
+            오늘({today_date}) 기준으로 {company_name}의 주가 방향성 판단에 필요한 최신 뉴스를 검색하세요.
 
-            💡 [검색 및 작성 주의사항]
-            - 🚨 검색량 극대화: 단일 검색어에 의존하지 마세요. 실적을 찾을 때 "{company_name} 1분기 실적", "{company_name} 어닝 서프라이즈", "{company_name} 영업이익 발표" 등 유연하고 다양한 키워드로 여러 번 검색하여 충분한 데이터를 확보하세요. (특정 언론사 site: 제한 없음)
-            - 🚨 [실적 팩트 체크 최우선]: 넓게 수집한 뉴스 중에서 '전망', '예상', '추정' 등의 단어가 포함된 과거 기사보다, '확정', '발표', '사상 최대', '달성' 등의 완료형 키워드가 포함된 기사를 무조건 1순위로 채택하세요. 수치가 충돌할 경우(예: 50조 추정 vs 57조 확정) 반드시 가장 최신의 확정 수치를 요약문에 명시하세요.
-            - 🚨 절대로 URL(링크)을 스스로 지어내지 마세요. 도구가 반환한 결과에 있는 실제 원본 출처 링크만 사용해야 합니다.
+            🚨 [검색 강제]
+            반드시 safe_serper_news_search 도구를 사용하세요.
+            검색은 아래 3가지 앵글로 각각 수행하세요.
+
+            1. 매크로 영향:
+               "{company_name} 금리 환율 수급 주가 영향 site:hankyung.com OR site:mk.co.kr OR site:infomax.co.kr"
+
+            2. 산업/경쟁사 동향:
+               "{company_name} 산업 경쟁사 수급 전망 site:hankyung.com OR site:mk.co.kr OR site:infomax.co.kr"
+
+            3. 실적/목표가/증권사 리포트:
+               "{company_name} 목표가 증권사 리포트 실적 전망 site:hankyung.com OR site:mk.co.kr OR site:infomax.co.kr"
+
+            💡 당일 기사가 없다면 최근 1~2주 내 의미 있는 기사만 사용하세요.
+
+            🚨 [도구 결과 검증]
+            - 도구 결과 JSON의 is_data_valid가 false이면 해당 검색 결과는 사용하지 마세요.
+            - 세 검색 중 최소 1개 이상 유효한 실제 뉴스 결과가 있어야 최종 is_data_valid를 True로 설정하세요.
+            - 유효한 뉴스가 하나도 없으면:
+              sentiment_score = 50.0
+              momentum_strength = "LOW"
+              news_summary = "최신 유의미한 뉴스 데이터 수집 실패"
+              is_data_valid = False
+              로 반환하세요.
+
+            🚨 [재무 수치 사용 금지]
+            - 뉴스에 포함된 매출, 영업이익, 순이익, EPS, 영업이익률 등 구체적인 재무 숫자는 news_summary에 쓰지 마세요.
+            - 실적 관련 내용은 "어닝 서프라이즈", "수익성 개선", "적자 전환", "실적 우려"처럼 정성 방향성만 쓰세요.
+            - 재무 수치는 Accounting 데이터만 최종 리포트에서 사용합니다.
+
+            🚨 [환각 금지]
+            - 검색 결과에 없는 기사 제목, URL, 증권사명, 목표가, 수치, 날짜를 만들지 마세요.
+            - 출처가 불명확하면 사용하지 마세요.
+            - 부족하면 부족하다고 쓰세요.
+
+            🚨 [점수 산정]
+            - 매우 긍정적 뉴스 다수: 70~85
+            - 긍정 우위: 60~69
+            - 중립/혼재: 45~55
+            - 부정 우위: 30~44
+            - 매우 부정적 뉴스 다수: 15~29
+            - 유효 뉴스 없음: 50.0
+
+            🚨 [출력 길이 제한]
+            - news_summary는 1200자 이내로 작성하세요.
+            - 핵심 뉴스 3개 이하만 요약하세요.
+            - 마크다운 표는 사용하지 마세요.
             ''',
-            expected_output=f'{company_name} 관련 3가지 앵글(매크로, 산업동향, 실적 발표/팩트)에 맞춘 핵심 뉴스 요약 및 원본 출처 링크',
-            agent=agent
+            expected_output=f'{company_name} 최신 뉴스 요약 및 센티먼트 점수를 포함한 JSON',
+            agent=agent,
+            output_pydantic=ResearchOutput,
         )

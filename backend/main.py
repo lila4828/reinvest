@@ -381,7 +381,6 @@ def run_financial_crew():
     # 2. 종목 루프
     # ---------------------------------------------------------
     stock_pool = [
-        ("041020.KQ", "폴라리스오피스"),
         ("TSLA", "테슬라"),
         ("005930.KS", "삼성전자"),
     ]
@@ -820,7 +819,13 @@ def run_financial_crew():
                 "report": msg,
             })
             continue
-    summary_output = "\n\n" + "★" * 60 + "\n\n"
+    now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    summary_output = f"> **최근 업데이트 일시:** {now_text}\n\n"
+    summary_output += "<!-- MACRO_DATA\n"
+    summary_output += macro_json
+    summary_output += "\n-->\n\n"
+    summary_output += "★" * 60 + "\n\n"
     summary_output += "\n\n".join(item["report"] for item in all_reports)
 
     return {

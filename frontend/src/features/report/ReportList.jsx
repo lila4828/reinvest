@@ -19,14 +19,18 @@ function ReportList({ reports, isLoading, onReportClick }) {
   return (
     <div className="list-group">
       {reports.map((report, index) => (
-        <button 
+        <button
           type="button"
-          key={index} 
+          key={`${report.date}-${report.filename}-${index}`}
           className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-          onClick={() => onReportClick(report.filename)}
+          onClick={() => onReportClick(report)}
         >
-          <span>📄 <strong>{report.date}</strong> 종합 분석 리포트</span>
-          <span className="badge bg-primary rounded-pill">보기</span>
+          <span>
+            📄 <strong>{report.date}</strong> {report.display_name}
+          </span>
+          <span className={`badge rounded-pill ${report.is_summary ? 'bg-primary' : 'bg-secondary'}`}>
+            {report.is_summary ? '종합' : '개별'}
+          </span>
         </button>
       ))}
     </div>

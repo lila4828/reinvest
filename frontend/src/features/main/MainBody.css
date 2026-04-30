@@ -1,3 +1,23 @@
 .main-body-panel {
   background-color: #ffffff;
 }
+.report-markdown-container {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.report-markdown-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.report-markdown-container th,
+.report-markdown-container td {
+  border: 1px solid #dee2e6;
+  padding: 10px;
+}
+
+.report-markdown-container th {
+  background-color: #f8f9fa;
+}

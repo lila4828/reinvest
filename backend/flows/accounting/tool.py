@@ -12,9 +12,10 @@ def _to_float(value, default=None):
             if value.strip().upper() in ["N/A", "NONE", "NULL", ""]:
                 return default
             value = value.replace(",", "").replace("%", "")
-        if isinstance(value, float) and math.isnan(value):
+        val_f = float(value)
+        if math.isnan(val_f):
             return default
-        return float(value)
+        return val_f
     except Exception:
         return default
 

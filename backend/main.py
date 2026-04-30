@@ -63,8 +63,8 @@ SCORING_CONFIG = {
         "negative_cutoff": 35,
     },
     "final": {
-        "system_weight": 0.75,
-        "guru_weight": 0.25,
+        "system_weight": 0.30,
+        "guru_weight": 0.70,
         "strong_buy_cutoff": 70,
         "buy_cutoff": 60,
         "hold_cutoff": 40,
@@ -246,7 +246,7 @@ def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
         "accounting": json.dumps(compact_accounting, ensure_ascii=False, indent=2),
         "macro": truncate_text(macro_json, 2000),
         "research": truncate_text(research_json, 2500),
-        "youtube": truncate_text(youtube_json, 3000),
+        "youtube": truncate_text(youtube_json, 5000),
     }
 
 
@@ -342,7 +342,7 @@ def run_financial_crew():
         agents=[macro_agent],
         tasks=[task_macro],
         verbose=False,
-        cache=True,
+        cache=False,
     )
 
     macro_result = safe_kickoff(macro_crew, "Macro Crew")
@@ -407,7 +407,7 @@ def run_financial_crew():
                 agents=[accounting_agent],
                 tasks=[task_accounting],
                 verbose=False,
-                cache=True,
+                cache=False,
             )
 
             acc_result = safe_kickoff(financial_crew, f"{company} Accounting Crew")
@@ -507,7 +507,7 @@ def run_financial_crew():
                     agents=[researcher_agent],
                     tasks=[task_res],
                     verbose=False,
-                    cache=True,
+                    cache=False,
                 )
                 return safe_kickoff(crew, f"{company} Research Crew")
 
@@ -517,7 +517,7 @@ def run_financial_crew():
                     agents=[youtube_agent],
                     tasks=[task_yt],
                     verbose=False,
-                    cache=True,
+                    cache=False,
                 )
                 return safe_kickoff(crew, f"{company} YouTube Crew")
 
@@ -547,7 +547,7 @@ def run_financial_crew():
                 research_json = json.dumps(
                     {
                         "sentiment_score": 50,
-                        "momentum_strength": "MEDIUM",
+                        "momentum_strength": "LOW",
                         "news_summary": "최신 유의미한 뉴스 데이터 수집 실패",
                         "is_data_valid": False,
                     },
@@ -576,9 +576,14 @@ def run_financial_crew():
                 guru_weight = 0.0
                 youtube_json = json.dumps(
                     {
-                        "guru_sentiment_score": 50,
+                        "guru_sentiment_score": 50.0,
                         "key_strategy": "N/A",
                         "content_type": "N/A",
+                        "insight_date": "N/A",
+                        "freshness_level": "N/A",
+                        "mindset_summary": "유의미한 직접 투자 마인드 발언 없음",
+                        "market_principle": "유의미한 시장 대응 원칙 없음",
+                        "risk_control": "유의미한 리스크 관리 발언 없음",
                         "guru_insight_details": "최신 유의미한 영상 데이터 수집 실패",
                         "is_data_valid": False,
                     },
@@ -587,12 +592,26 @@ def run_financial_crew():
             else:
                 guru_score = youtube_result.pydantic.guru_sentiment_score
                 content_type = getattr(youtube_result.pydantic, "content_type", "UNKNOWN")
+                freshness_level = getattr(youtube_result.pydantic, "freshness_level", "UNKNOWN")
+                insight_date = getattr(youtube_result.pydantic, "insight_date", "N/A")
 
-                if content_type == "SPECIFIC":
+                # 구루 70%는 "최신 종목 직접 발언"일 때만 반영
+                # MARKET/MINDSET/RISK/PSYCHOLOGY는 리포트 해석에는 사용하지만 점수에는 반영하지 않음
+                if (
+                    content_type == "SPECIFIC"
+                    and freshness_level in ["FRESH", "RECENT"]
+                    and guru_score != 50.0
+                ):
                     guru_weight = SCORING_CONFIG["final"]["guru_weight"]
                 else:
                     guru_weight = 0.0
-                logger.info(f"📺 [{company}] 유튜브 영상 성격 판별: {content_type}")
+
+                logger.info(
+                    f"📺 [{company}] 유튜브 영상 성격 판별: {content_type} "
+                    f"| 신선도: {freshness_level} | 기준일: {insight_date} "
+                    f"| Guru Score: {guru_score} | Guru Weight: {guru_weight:.0%}"
+                )
+
                 youtube_json = youtube_result.pydantic.model_dump_json(indent=2)
 
             # ---------------------------------------------------------
@@ -610,7 +629,11 @@ def run_financial_crew():
             # 50점을 중립으로 두고, 1점당 약 7점씩 이동
             system_score = max(0, min(100, 50 + (total_score * 7)))
 
-            system_weight = 1.0 - guru_weight
+            if guru_weight > 0:
+                system_weight = SCORING_CONFIG["final"]["system_weight"]
+            else:
+                system_weight = 1.0
+
             final_weighted_score = (system_score * system_weight) + (guru_score * guru_weight)
 
             final_cfg = SCORING_CONFIG["final"]
@@ -697,7 +720,7 @@ def run_financial_crew():
                 tasks=[task_analysis],
                 process=Process.sequential,
                 verbose=False,
-                cache=True,
+                cache=False,
             )
 
             logger.info(f"🧠 [{company}] 최종 리포트 생성 중...")

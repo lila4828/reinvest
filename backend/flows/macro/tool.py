@@ -8,9 +8,10 @@ def _to_float(value, default=None):
     try:
         if value is None:
             return default
-        if isinstance(value, float) and math.isnan(value):
+        val_f = float(value)
+        if math.isnan(val_f):
             return default
-        return float(value)
+        return val_f
     except Exception:
         return default
 

@@ -17,7 +17,7 @@ class AnalysisOutput(BaseModel):
     macro_analysis: str = Field(description="매크로 및 시장 환경 분석, 700자 이내")
     fundamental_analysis: str = Field(description="펀더멘털 및 퀀트 분석, 900자 이내")
     momentum_analysis: str = Field(description="비즈니스 모멘텀 분석, 700자 이내")
-    guru_analysis: str = Field(description="구루의 시선 분석, 700자 이내")
+    guru_analysis: str = Field(description="구루의 시선 분석, 800자 이내")
     final_conclusion: str = Field(description="수석 애널리스트 종합 결론, 900자 이내")
     chart_data: List[ChartData] = Field(description="최근 3개년 실적 차트 데이터, T-2/T-1/T 순서")
 
@@ -35,8 +35,8 @@ class AnalysisTask:
         target_buy_price,
         defense_price,
     ):
-        target_buy_price_text = "N/A" if target_buy_price is None else f"{target_buy_price:,.2f}"
-        defense_price_text = "N/A" if defense_price is None else f"{defense_price:,.2f}"
+        target_buy_price_text = f"{target_buy_price:,.2f}" if isinstance(target_buy_price, (int, float)) else "N/A"
+        defense_price_text = f"{defense_price:,.2f}" if isinstance(defense_price, (int, float)) else "N/A"
 
         return Task(
             description=f'''
@@ -71,7 +71,7 @@ class AnalysisTask:
             3. 재무 수치 근거:
                - 실적 수치, PER, PBR, ROE, 이동평균선은 반드시 Accounting 데이터만 사용하세요.
                - 뉴스에 나온 매출/이익 숫자는 사용하지 마세요.
-               - revenue, net_income, fcf 배열은 과거 -> 최근 순서입니다.
+               - 입력 데이터의 revenue, net_income, fcf 배열은 과거 -> 최근 순서이며, 이를 ChartData의 revenue, net_profit, fcf 필드에 각각 정확히 매핑하세요.
                - 본문에 재무 수치를 쓸 때는 원본 숫자를 그대로 쓰지 말고 보기 쉬운 단위로 변환하세요.
                - 한국 종목은 매출, 순이익, FCF를 조원/억원 단위로 변환해 서술하세요.
                  예: 333605938000000.0 → 약 333.6조원
@@ -90,9 +90,38 @@ class AnalysisTask:
                - chart_data 배열에는 Accounting 데이터의 원본 float 숫자를 그대로 넣으세요.
 
             4. 유튜브 데이터 해석:
-               - content_type이 MARKET이면 개별 종목 추천으로 해석하지 마세요.
-               - MARKET이면 시장 대응 전략/리스크 관리 참고 자료로만 사용하세요.
-               - content_type이 N/A이거나 is_data_valid가 false이면 구루 분석에는 "유의미한 직접 발언 없음"이라고 쓰세요.
+               - 유튜브 데이터는 목표가, 매수가, 매도가를 산출하는 근거가 아닙니다.
+               - 유튜브 데이터는 투자 마인드, 시장 대응 원칙, 수급/심리 해석, 종목을 바라보는 관점, 추격매수 경계, 분할매수/관망/리스크 관리 철학으로 사용하세요.
+               - YouTube 입력에 포함된 content_type, insight_date, freshness_level, mindset_summary, market_principle, risk_control, guru_insight_details를 반드시 참고하세요.
+
+               - content_type이 SPECIFIC이면:
+                 해당 종목에 대한 직접적인 시선이나 투자 관점으로 해석하세요.
+                 단, 스크립트에 없는 목표가, 매수가, 상승률, 실적 수치, 추천 발언은 만들지 마세요.
+                 freshness_level이 OLD 또는 STALE이면 현재 매수/매도 판단보다는 참고 의견으로만 다루세요.
+
+               - content_type이 MARKET이면:
+                 개별 종목 추천으로 해석하지 마세요.
+                 시장 시황, 금리, 환율, 지수, 수급 변화에 대한 대응 원칙으로 해석하세요.
+                 현재 종목의 재무 상태, 가격 위치, 이동평균선, 뉴스 모멘텀과 연결해 "어떤 태도로 대응해야 하는가"를 서술하세요.
+
+               - content_type이 MINDSET이면:
+                 매수/매도 판단이 아니라 투자자의 행동 통제, 기다림, 원칙 준수, 탐욕/공포 관리 관점으로 해석하세요.
+                 좋은 기업과 좋은 매수 가격을 구분해야 한다는 식의 투자 태도로 풀어 쓰세요.
+
+               - content_type이 RISK이면:
+                 현금 비중, 분할매수, 관망, 손절/방어, 추격매수 경계, 비중 조절 원칙으로 해석하세요.
+                 현재가가 권장 매수가보다 높거나 주요 이평선과 괴리가 크면 추격매수 경계와 가격 확인 원칙을 강조하세요.
+
+               - content_type이 PSYCHOLOGY이면:
+                 수급, 투자 심리, 차트 확인, 뉴스보다 가격 확인 원칙으로 해석하세요.
+                 뉴스가 좋아도 실제 가격·수급·이평선 확인이 필요하다는 관점으로 연결하세요.
+
+               - content_type이 N/A이거나 is_data_valid가 false이면:
+                 구루 분석에는 "유의미한 직접 발언은 없으며, 별도 구루 근거는 제한적"이라고 쓰세요.
+
+               - guru_analysis는 단순히 "직접 언급 없음"으로 끝내지 마세요.
+                 MARKET/MINDSET/RISK/PSYCHOLOGY 자료가 있으면, 개별 호재/악재로 단정하지 않는 범위에서 반드시 현재 종목의 대응 원칙으로 번역하세요.
+                 예: "해외 증시 강세를 국내 개별주에 기계적으로 대입하지 말 것", "뉴스보다 가격과 수급 확인이 우선", "좋은 기업과 좋은 매수 가격은 다르다", "추격매수보다 분할 접근과 관망이 적절하다"처럼 서술하세요.
 
             5. 출력 길이 제한:
                - executive_summary는 정확히 3개만 작성하세요.
@@ -104,6 +133,8 @@ class AnalysisTask:
 
             6. 환각 방지:
                - 입력 데이터에 없는 숫자, 목표가, 상승률, 기사 제목, 발언을 만들지 마세요.
+               - YouTube 스크립트에 없는 구루 발언을 만들지 마세요.
+               - MARKET/MINDSET/RISK/PSYCHOLOGY 자료를 {company_name}의 직접 추천이나 직접 호재/악재로 쓰지 마세요.
                - 모르는 내용은 데이터 부족으로 명시하세요.
             ''',
             expected_output=f'{company_name}에 대한 구조화된 투자 분석 JSON',

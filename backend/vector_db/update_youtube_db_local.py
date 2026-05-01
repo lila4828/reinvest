@@ -39,7 +39,7 @@ def build_local_youtube_db_with_gpu():
     
     skip_expected_count = 0
     skip_other_count = 0
-    print("\n📝 [로컬 STT] 내 PC의 GPU(RTX 3070 Ti)를 사용하여 무료로 텍스트 변환을 진행합니다.")
+    print("\n📝 [로컬 STT] 내 PC의 GPU(RTX 3070)를 사용하여 무료로 텍스트 변환을 진행합니다.")
     
     # 💡 [핵심] 로컬 Whisper 모델 로드 (CUDA GPU 사용, float16으로 VRAM 최적화)
     print("🧠 로컬 Whisper 모델(large-v3)을 그래픽카드 메모리에 올리는 중입니다. 잠시만 기다려주세요...")

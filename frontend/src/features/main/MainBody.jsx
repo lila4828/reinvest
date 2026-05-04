@@ -42,7 +42,7 @@ function parseReportsFromMarkdown(content) {
   });
 }
 
-function MainBody() {
+function MainBody({ refreshKey = 0 }) {
   const [reports, setReports] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -51,8 +51,16 @@ function MainBody() {
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const listRes = await fetch(`${API_BASE_URL}/api/reports`);
-        if (!listRes.ok) throw new Error('목록 로딩 실패');
+        setLoading(true);
+        setError(null);
+
+        const listRes = await fetch(`${API_BASE_URL}/api/reports`, {
+          credentials: 'include',
+        });
+
+        if (!listRes.ok) {
+          throw new Error('목록 로딩 실패');
+        }
 
         const listData = await listRes.json();
 
@@ -67,7 +75,9 @@ function MainBody() {
         const date = encodeURIComponent(latestSummary.date);
         const filename = encodeURIComponent(latestSummary.filename);
 
-        const detailRes = await fetch(`${API_BASE_URL}/api/reports/${date}/${filename}`);
+        const detailRes = await fetch(`${API_BASE_URL}/api/reports/${date}/${filename}`, {
+          credentials: 'include',
+        });
         if (!detailRes.ok) throw new Error('리포트 상세 로딩 실패');
 
         const detailData = await detailRes.json();
@@ -87,7 +97,7 @@ function MainBody() {
     };
 
     fetchReports();
-  }, []);
+  }, [refreshKey]);
 
   if (loading) {
     return <div className="p-4 text-center">종목 리포트를 분석 및 로딩하는 중...</div>;

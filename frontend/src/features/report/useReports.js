@@ -4,6 +4,11 @@ import { useSearchParams } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+});
+
 export function useReports() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -19,8 +24,9 @@ export function useReports() {
 
   useEffect(() => {
     setIsLoadingList(true);
+    setErrorMsg('');
 
-    axios.get(`${API_BASE_URL}/api/reports`)
+    apiClient.get('/api/reports')
       .then(response => {
         const singleReports = (response.data.reports || []).filter(
           report => !report.is_summary
@@ -31,7 +37,13 @@ export function useReports() {
       })
       .catch(error => {
         console.error('리포트 목록을 불러오지 못했습니다.', error);
-        setErrorMsg('리포트 목록을 불러오는 중 문제가 발생했습니다. 서버 상태를 확인해주세요.');
+
+        if (error.response?.status === 401) {
+          setErrorMsg('로그인이 필요합니다. 다시 로그인해 주세요.');
+        } else {
+          setErrorMsg('리포트 목록을 불러오는 중 문제가 발생했습니다. 서버 상태를 확인해주세요.');
+        }
+
         setIsLoadingList(false);
       });
   }, []);
@@ -46,14 +58,20 @@ export function useReports() {
     const date = encodeURIComponent(report.date);
     const filename = encodeURIComponent(report.filename);
 
-    axios.get(`${API_BASE_URL}/api/reports/${date}/${filename}`)
+    apiClient.get(`/api/reports/${date}/${filename}`)
       .then(response => {
         setReportContent(response.data.content);
         setIsLoadingDetail(false);
       })
       .catch(error => {
         console.error('리포트 상세 내용을 불러오지 못했습니다.', error);
-        setErrorMsg('리포트 상세 내용을 불러오는 중 문제가 발생했습니다.');
+
+        if (error.response?.status === 401) {
+          setErrorMsg('로그인이 필요합니다. 다시 로그인해 주세요.');
+        } else {
+          setErrorMsg('리포트 상세 내용을 불러오는 중 문제가 발생했습니다.');
+        }
+
         setIsLoadingDetail(false);
       });
   }, []);
@@ -61,7 +79,6 @@ export function useReports() {
   useEffect(() => {
     if (isLoadingList) return;
 
-    // URL에 상세 파라미터가 없으면 리스트 화면
     if (!dateParam || !filenameParam) {
       setSelectedReport(null);
       setReportContent('');
@@ -69,7 +86,6 @@ export function useReports() {
       return;
     }
 
-    // URL 파라미터에 해당하는 리포트 찾기
     const matchedReport = reports.find(
       report => report.date === dateParam && report.filename === filenameParam
     );
@@ -87,8 +103,6 @@ export function useReports() {
   const handleReportClick = (report) => {
     if (!report?.date || !report?.filename) return;
 
-    // 중요: replace를 쓰지 않으면 브라우저 히스토리에 상세 화면이 쌓임
-    // 그래서 크롬 뒤로가기 시 /report 리스트로 돌아갈 수 있음
     setSearchParams({
       date: report.date,
       filename: report.filename,
@@ -96,7 +110,6 @@ export function useReports() {
   };
 
   const handleBack = () => {
-    // 앱 내부 버튼도 /report 리스트 상태로 복귀
     setSearchParams({});
     setSelectedReport(null);
     setErrorMsg('');

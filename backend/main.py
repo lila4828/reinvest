@@ -44,6 +44,12 @@ logging.basicConfig(
     ],
 )
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 SCORING_CONFIG = {
@@ -269,7 +275,46 @@ def safe_kickoff(crew, label: str):
         logger.exception(f"❌ {label} kickoff 실패: {e}")
         return DummyResult()
 
-def run_financial_crew():
+def normalize_stock_pool(stock_pool):
+    """
+    외부 입력 종목 데이터를 main.py 내부 표준 형식으로 변환한다.
+    표준 형식: [("TSLA", "테슬라"), ("005930.KS", "삼성전자")]
+    """
+
+    default_stock_pool = [
+        ("TSLA", "테슬라"),
+        ("005930.KS", "삼성전자"),
+    ]
+
+    if stock_pool is None:
+        return default_stock_pool
+
+    if not isinstance(stock_pool, list) or not stock_pool:
+        raise ValueError("stock_pool은 비어 있지 않은 list여야 합니다.")
+
+    normalized = []
+
+    for item in stock_pool:
+        if isinstance(item, dict):
+            ticker = item.get("ticker")
+            company = item.get("company")
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            ticker, company = item
+        else:
+            raise ValueError(f"잘못된 종목 입력 형식입니다: {item}")
+
+        ticker = str(ticker).strip() if ticker else ""
+        company = str(company).strip() if company else ""
+
+        if not ticker or not company:
+            raise ValueError(f"ticker/company 값이 비어 있습니다: {item}")
+
+        normalized.append((ticker, company))
+
+    return normalized
+
+def run_financial_crew(stock_pool=None):
+    stock_pool = normalize_stock_pool(stock_pool)
     openai_api_key = require_env("OPENAI_API_KEY")
 
     # 뉴스 리서치에서 사용
@@ -319,7 +364,7 @@ def run_financial_crew():
     # ---------------------------------------------------------
     # 0. 유튜브 DB 업데이트
     # ---------------------------------------------------------
-    logger.info("🔄 [0단계] 유튜브 최신 영상 확인...")
+    logger.debug("🔄 [0단계] 유튜브 최신 영상 확인...")
 
     try:
         new_vids = fetch_all_latest_youtube_ids(fetch_limit=5)
@@ -340,7 +385,7 @@ def run_financial_crew():
     # ---------------------------------------------------------
     # 1. 매크로 분석
     # ---------------------------------------------------------
-    logger.info("🌍 [1단계] 매크로 분석 시작")
+    logger.debug("🌍 [1단계] 매크로 분석 시작")
 
     task_macro = macro_tasks.analyze_macro_economy(macro_agent)
 
@@ -386,14 +431,9 @@ def run_financial_crew():
     # ---------------------------------------------------------
     # 2. 종목 루프
     # ---------------------------------------------------------
-    stock_pool = [
-        ("TSLA", "테슬라"),
-        ("005930.KS", "삼성전자"),
-    ]
-
     all_reports = []
 
-    logger.info("🏭 [시스템] 종목 분석 파이프라인 가동")
+    logger.debug("🏭 [시스템] 종목 분석 파이프라인 가동")
 
     for ticker, company in stock_pool:
         try:
@@ -504,7 +544,7 @@ def run_financial_crew():
             # ---------------------------------------------------------
             # 3. 뉴스 & 유튜브 순차 수집
             # ---------------------------------------------------------
-            logger.info(f"🔄 [{company}] 리서치 데이터 수집 중...")
+            logger.debug(f"🔄 [{company}] 리서치 데이터 수집 중...")
 
             def run_research():
                 task_res = res_tasks.collect_news_task(researcher_agent, company)
@@ -535,7 +575,7 @@ def run_financial_crew():
                 logger.exception(f"⚠️ [{company}] 리서치 수집 예외 발생 → fallback 적용: {e}")
                 research_result = DummyResult()
 
-            logger.info(f"🔄 [{company}] 유튜브 데이터 수집 중...")
+            logger.debug(f"🔄 [{company}] 유튜브 데이터 수집 중...")
 
             try:
                 youtube_result = run_youtube()
@@ -611,7 +651,7 @@ def run_financial_crew():
                 else:
                     guru_weight = 0.0
 
-                logger.info(
+                logger.debug(
                     f"📺 [{company}] 유튜브 영상 성격 판별: {content_type} "
                     f"| 신선도: {freshness_level} | 기준일: {insight_date} "
                     f"| Guru Score: {guru_score} | Guru Weight: {guru_weight:.0%}"
@@ -659,7 +699,7 @@ def run_financial_crew():
             else:
                 guru_sentiment_label = "Neutral"
 
-            logger.info(
+            logger.debug(
                 f"📊 [시스템 채점] {company} | 시스템 점수: {system_score}점 "
                 f"(재무 {fundamental_score} + 매크로 {macro_score} + 뉴스 {sentiment})"
             )
@@ -728,7 +768,7 @@ def run_financial_crew():
                 cache=False,
             )
 
-            logger.info(f"🧠 [{company}] 최종 리포트 생성 중...")
+            logger.debug(f"🧠 [{company}] 최종 리포트 생성 중...")
             final_result = safe_kickoff(analysis_crew, f"{company} Analysis Crew")
 
             # ---------------------------------------------------------
@@ -851,16 +891,7 @@ def run_financial_crew():
         "reports": all_reports,
     }
 
-
-if __name__ == "__main__":
-    output = run_financial_crew()
-
-    logger.info("=" * 60)
-    logger.info("🏆 시스템 실행 완료")
-    logger.info("=" * 60)
-
-    print(output["summary"])
-
+def save_report_files(output):
     try:
         result_date = output["date"]
         result_dir = os.path.join("result", result_date)
@@ -887,5 +918,20 @@ if __name__ == "__main__":
 
             logger.info(f"💾 종목별 리포트 저장 완료 → {file_path}")
 
+        return result_dir
+
     except Exception as e:
-        logger.error(f"❌ 리포트 파일 저장 실패: {e}")
+        logger.exception(f"❌ 리포트 파일 저장 실패: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    output = run_financial_crew()
+
+    logger.debug("=" * 60)
+    logger.debug("🏆 시스템 실행 완료")
+    logger.debug("=" * 60)
+
+    print(output["summary"])
+
+    save_report_files(output)

@@ -62,7 +62,7 @@ function formatChange(value) {
   return `${number > 0 ? '+' : ''}${number.toFixed(2).replace(/\.00$/, '')}%`;
 }
 
-function MainTop() {
+function MainTop({ refreshKey = 0 }) {
   const [macroData, setMacroData] = useState({
     exchangeRate: null,
     us10y: null,
@@ -77,7 +77,9 @@ function MainTop() {
   useEffect(() => {
     const fetchMacroData = async () => {
       try {
-        const reportListRes = await fetch(`${API_BASE_URL}/api/reports`);
+        const reportListRes = await fetch(`${API_BASE_URL}/api/reports`, {
+          credentials: 'include',
+        });
 
         if (!reportListRes.ok) {
           throw new Error(`리포트 목록 로딩 실패 (HTTP ${reportListRes.status})`);
@@ -95,7 +97,9 @@ function MainTop() {
         const date = encodeURIComponent(latestSummary.date);
         const filename = encodeURIComponent(latestSummary.filename);
 
-        const reportDetailRes = await fetch(`${API_BASE_URL}/api/reports/${date}/${filename}`);
+        const reportDetailRes = await fetch(`${API_BASE_URL}/api/reports/${date}/${filename}`, {
+          credentials: 'include',
+        });
 
         if (!reportDetailRes.ok) {
           throw new Error(`최신 리포트 로딩 실패 (HTTP ${reportDetailRes.status})`);
@@ -218,7 +222,7 @@ function MainTop() {
     };
 
     fetchMacroData();
-  }, []);
+  }, [refreshKey]);
 
   if (macroData.loading) {
     return (

@@ -1,0 +1,64 @@
+.report-generator-card {
+  background-color: #ffffff;
+}
+
+.report-job-badge {
+  font-size: 0.8rem;
+  padding: 8px 10px;
+  text-transform: uppercase;
+}
+
+.status-pending {
+  background-color: #6c757d;
+}
+
+.status-running {
+  background-color: #0d6efd;
+}
+
+.status-success {
+  background-color: #198754;
+}
+
+.status-failed {
+  background-color: #dc3545;
+}
+
+.stock-search-wrapper {
+  position: relative;
+}
+
+.stock-search-status {
+  margin-top: 6px;
+}
+
+.stock-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 9999;
+  width: 100%;
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: #ffffff;
+  margin-top: 6px;
+  border-radius: 10px;
+}
+
+.stock-search-item {
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e9ecef;
+  cursor: pointer;
+}
+
+.stock-search-item:hover {
+  background-color: #f1f5ff;
+}
+
+.stock-search-item:last-child {
+  border-bottom: 0;
+}

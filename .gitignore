@@ -24,6 +24,8 @@ pip-selfcheck.json
 # 로그 파일
 system.log
 system.log.*
+api.log
+system.log.*
 
 # 대용량 데이터 및 벡터 DB
 audios/

@@ -1,0 +1,35 @@
+[
+  {
+    "ticker": "005930.KS",
+    "company": "삼성전자",
+    "exchange": "KOSPI",
+    "quote_type": "EQUITY",
+    "keywords": [
+      "005930.KS",
+      "삼성전자",
+      "KOSPI"
+    ]
+  },
+  {
+    "ticker": "TSLA",
+    "company": "테슬라",
+    "exchange": "NASDAQ",
+    "quote_type": "EQUITY",
+    "keywords": [
+      "TSLA",
+      "테슬라",
+      "NASDAQ"
+    ]
+  },
+  {
+    "ticker": "SOFI",
+    "company": "SoFi Technologies, Inc.",
+    "exchange": "NASDAQ",
+    "quote_type": "EQUITY",
+    "keywords": [
+      "SOFI",
+      "SoFi Technologies, Inc.",
+      "NASDAQ"
+    ]
+  }
+]

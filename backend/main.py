@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 from dotenv import load_dotenv
 from crewai import Crew, Process, LLM
 from datetime import datetime
@@ -17,7 +18,7 @@ from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
 
 # 유튜브 자동화 파이프라인 임포트
-from vector_db.fetch_latest_youtube_ids import fetch_and_update_video_ids
+from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
 from vector_db.update_youtube_db import build_local_youtube_db
 from vector_db.build_vector_db import build_db_from_transcripts
 
@@ -212,6 +213,13 @@ def truncate_text(value, max_chars=3000):
 
     return text[:max_chars] + "\n...[TRUNCATED]"
 
+def extract_report_summary(md_report: str):
+    if not md_report or not isinstance(md_report, str):
+        return ""
+
+    # 상세 본문 시작 전까지만 남김
+    return md_report.split("\n---")[0].strip()
+
 
 def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
     """
@@ -312,21 +320,19 @@ def run_financial_crew():
     # 0. 유튜브 DB 업데이트
     # ---------------------------------------------------------
     logger.info("🔄 [0단계] 유튜브 최신 영상 확인...")
-    target_channel_url = "https://www.youtube.com/@주알홍쌤/videos"
 
     try:
-        new_vids = fetch_and_update_video_ids(
-            target_channel_url,
-            file_path="vector_db/youtube_video_ids.txt",
-            fetch_limit=5,
-        )
+        new_vids = fetch_all_latest_youtube_ids(fetch_limit=5)
 
         if new_vids:
-            logger.info("🚨 신규 영상 감지 → DB 업데이트 진행")
+            logger.info(
+                f"🚨 신규 영상 {len(new_vids)}개 감지 "
+                f"→ 자막 생성 및 증분 임베딩 진행"
+            )
             build_local_youtube_db()
             build_db_from_transcripts()
         else:
-            logger.info("✅ 기존 DB 사용 (신규 영상 없음)")
+            logger.info("✅ 신규 영상 없음 → 기존 YouTube 벡터DB 사용")
 
     except Exception as e:
         logger.exception(f"⚠️ 유튜브 DB 업데이트 실패 → 기존 DB로 진행: {e}")
@@ -825,8 +831,19 @@ def run_financial_crew():
     summary_output += "<!-- MACRO_DATA\n"
     summary_output += macro_json
     summary_output += "\n-->\n\n"
-    summary_output += "★" * 60 + "\n\n"
-    summary_output += "\n\n".join(item["report"] for item in all_reports)
+
+    summary_cards = []
+
+    for item in all_reports:
+        if item.get("status") == "SUCCESS":
+            summary_cards.append(extract_report_summary(item.get("report", "")))
+        else:
+            summary_cards.append(
+                f"# 📈 {item.get('company', 'N/A')} 심층 투자 전략 리포트\n\n"
+                f"> {item.get('report', '분석 실패')}"
+            )
+
+    summary_output += "\n\n---\n\n".join(summary_cards)
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),

@@ -1,0 +1,56 @@
+:root {
+  --chart-revenue: #2563eb;
+  --chart-net-profit: #16a34a;
+  --chart-fcf: #f97316;
+}
+
+.report-detail-chart-card {
+  background: #ffffff;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.08);
+}
+
+.report-detail-chart-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.report-detail-chart-unit {
+  color: #6c757d;
+  font-size: 0.875rem;
+  margin-bottom: 24px;
+}
+
+.report-chart-wrapper {
+  width: 100%;
+  height: 430px;
+}
+
+.report-chart-tooltip {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  padding: 12px 14px;
+}
+
+.report-chart-tooltip-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.report-chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  margin-bottom: 4px;
+}
+
+.report-chart-tooltip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}

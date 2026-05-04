@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export function useReports() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -22,7 +22,11 @@ export function useReports() {
 
     axios.get(`${API_BASE_URL}/api/reports`)
       .then(response => {
-        setReports(response.data.reports || []);
+        const singleReports = (response.data.reports || []).filter(
+          report => !report.is_summary
+        );
+
+        setReports(singleReports);
         setIsLoadingList(false);
       })
       .catch(error => {

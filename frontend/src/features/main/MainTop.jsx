@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './MainTop.css';
 import MacroCard from './MacroCard';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 function extractUpdateTime(content, fallbackDate) {
   if (!content || typeof content !== 'string') return fallbackDate || null;
@@ -117,6 +117,7 @@ function MainTop() {
         ]);
 
         const exchangeRateChange = pickNumber(macroJson, [
+          'exchange_rate_change_1mo',
           'exchange_rate_change',
           'exchange_rate_change_pct',
           'usd_krw_change',
@@ -131,6 +132,7 @@ function MainTop() {
         ]);
 
         const us10yChange = pickNumber(macroJson, [
+          'us_10y_yield_change_1mo',
           'us_10y_change',
           'us_10y_change_pct',
           'us10y_change',
@@ -144,6 +146,7 @@ function MainTop() {
         ]);
 
         const nasdaqChange = pickNumber(macroJson, [
+          'nasdaq_index_change_1mo',
           'nasdaq_change',
           'nasdaq_change_pct',
           'nasdaqChange',
@@ -156,6 +159,7 @@ function MainTop() {
         ]);
 
         const wtiChange = pickNumber(macroJson, [
+          'wti_price_change_1mo',
           'wti_change',
           'wti_change_pct',
           'wtiChange',
@@ -168,6 +172,7 @@ function MainTop() {
         ]);
 
         const vixChange = pickNumber(macroJson, [
+          'vix_index_change_1mo',
           'vix_change',
           'vix_change_pct',
           'vixChange',

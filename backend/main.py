@@ -284,6 +284,7 @@ def normalize_stock_pool(stock_pool):
     default_stock_pool = [
         ("TSLA", "테슬라"),
         ("005930.KS", "삼성전자"),
+        ("000660.KS", "SK하이닉스"),
     ]
 
     if stock_pool is None:

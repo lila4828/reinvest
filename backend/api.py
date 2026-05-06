@@ -199,6 +199,20 @@ def has_running_job(session_id: str):
         )
 
 
+def normalize_ticker_for_analysis(ticker: str):
+    ticker = str(ticker or "").strip().upper()
+
+    if (
+        len(ticker) == 10
+        and ticker.startswith("A")
+        and ticker[1:7].isalnum()
+        and ticker[7:] in [".KS", ".KQ"]
+    ):
+        return ticker[1:]
+
+    return ticker
+
+
 def run_report_background(job_id: str, stock_pool: list[tuple[str, str]]):
     api_logger.info(f"리포트 작업 시작: job_id={job_id}, stocks={stock_pool}")
 
@@ -208,16 +222,13 @@ def run_report_background(job_id: str, stock_pool: list[tuple[str, str]]):
             jobs[job_id]["started_at"] = datetime.now().isoformat(timespec="seconds")
 
     try:
-        # ✅ 테스트 중에는 실제 LLM/API 실행 방지
-        #from main import run_financial_crew, save_report_files
+        from main import run_financial_crew, save_report_files
         
-        # output = run_financial_crew(stock_pool=stock_pool)
-        # result_dir = save_report_files(output)
+        output = run_financial_crew(stock_pool=stock_pool)
+        result_dir = save_report_files(output)
 
-        # ✅ 테스트 모드
-        result_dir = "TEST_MODE"
-        report_count = len(stock_pool)
-        result_date = datetime.now().strftime("%Y-%m-%d")
+        report_count = len(output.get("reports", []))
+        result_date = output["date"]
 
         with jobs_lock:
             jobs[job_id]["status"] = "success"
@@ -437,8 +448,14 @@ def search_stock(q: str, session=Depends(get_current_session)):
         }
 
     except requests.RequestException as e:
-        api_logger.exception(f"종목 검색 실패: q={keyword}, error={e}")
-        raise HTTPException(status_code=500, detail="종목 검색 중 오류가 발생했습니다.")
+        api_logger.warning(f"Yahoo stock search fallback failed: q={keyword}, error={e}")
+
+        return {
+            "query": keyword,
+            "source": "yahoo_unavailable",
+            "results": [],
+            "message": "검색 결과가 없습니다. 종목명이나 티커로 다시 검색해 주세요.",
+        }
 
 @app.post("/api/run-report")
 def run_report(
@@ -460,7 +477,7 @@ def run_report(
     stock_pool = []
 
     for stock in payload.stocks:
-        ticker = stock.ticker.strip()
+        ticker = normalize_ticker_for_analysis(stock.ticker)
         company = stock.company.strip()
 
         if not ticker or not company:

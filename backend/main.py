@@ -226,6 +226,163 @@ def extract_report_summary(md_report: str):
     # 상세 본문 시작 전까지만 남김
     return md_report.split("\n---")[0].strip()
 
+def build_failed_report_card(company: str, report: str):
+    """
+    분석 실패/중단 종목도 MainBody.jsx가 파싱할 수 있도록
+    정상 리포트 카드 heading 형식으로 감싼다.
+    """
+    reason = str(report or "분석 실패").strip()
+
+    return (
+        f"# 📈 {company} 심층 투자 전략 리포트\n\n"
+        f"| 구분 | 상태 |\n"
+        f"| :--- | :--- |\n"
+        f"| **분석 결과** | **분석 중단** |\n\n"
+        f"### ⚠️ 분석 중단 사유\n"
+        f"> {reason}\n"
+    )
+
+
+def normalize_report_for_summary_item(item):
+    company = item.get("company", "N/A")
+    status = item.get("status")
+    report = item.get("report", "")
+
+    if status == "SUCCESS":
+        return report
+
+    return build_failed_report_card(company, report)
+
+def build_summary_from_output_reports(output):
+    """
+    이번 실행 결과(output["reports"])만 기준으로 summary.md 본문을 만든다.
+    멀티 종목 생성 시 개별 md 파일 스캔에 의존하지 않고,
+    output["reports"]에 들어온 종목을 모두 summary에 반영한다.
+    """
+    header = extract_summary_header(output.get("summary", ""))
+
+    summary_cards = []
+
+    for item in output.get("reports", []):
+        company = item.get("company", "N/A")
+        status = item.get("status")
+        report = item.get("report", "")
+
+        if status == "SUCCESS":
+            report_summary = extract_report_summary(report)
+
+            if report_summary:
+                summary_cards.append(report_summary)
+            else:
+                summary_cards.append(
+                    f"# 📈 {company} 심층 투자 전략 리포트\n\n"
+                    f"> 리포트 요약 추출 실패"
+                )
+        else:
+            summary_cards.append(
+                f"# 📈 {company} 심층 투자 전략 리포트\n\n"
+                f"> {report or '분석 실패'}"
+            )
+
+    if not summary_cards:
+        return output.get("summary", "")
+
+    if header:
+        return header + "\n\n---\n\n" + "\n\n---\n\n".join(summary_cards)
+
+    return "\n\n---\n\n".join(summary_cards)
+
+def extract_summary_header(summary_text: str):
+    if not summary_text or not isinstance(summary_text, str):
+        return ""
+
+    header = summary_text.split("\n\n---\n\n", 1)[0].strip()
+    first_report_index = header.find("\n# ")
+
+    if first_report_index >= 0:
+        header = header[:first_report_index].strip()
+
+    return header
+
+
+def build_merged_summary(result_dir: str, current_summary: str):
+    header = extract_summary_header(current_summary)
+    report_candidates = {}
+
+    for filename in sorted(os.listdir(result_dir)):
+        if not filename.endswith(".md") or filename == "summary.md":
+            continue
+
+        file_path = os.path.join(result_dir, filename)
+
+        if not os.path.isfile(file_path):
+            continue
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                report_summary = extract_report_summary(f.read())
+        except Exception as e:
+            logger.warning(f"summary merge skip failed: path={file_path}, error={e}")
+            continue
+
+        if not report_summary or "[분석 중단]" in report_summary:
+            continue
+
+        filename_without_ext = filename[:-3]
+        ticker = filename_without_ext.rsplit("_", 1)[-1]
+        normalized_ticker = normalize_ticker_for_summary(ticker)
+        modified_at = os.path.getmtime(file_path)
+        current_candidate = report_candidates.get(normalized_ticker)
+
+        if not current_candidate or modified_at >= current_candidate["modified_at"]:
+            report_candidates[normalized_ticker] = {
+                "modified_at": modified_at,
+                "summary": report_summary,
+            }
+
+    summary_cards = [
+        item["summary"]
+        for item in sorted(
+            report_candidates.values(),
+            key=lambda value: value["modified_at"],
+            reverse=True,
+        )
+    ]
+
+    if not summary_cards:
+        return current_summary
+
+    if header:
+        return header + "\n\n---\n\n" + "\n\n---\n\n".join(summary_cards)
+
+    return "\n\n---\n\n".join(summary_cards)
+
+
+def normalize_ticker_for_summary(ticker: str):
+    ticker = str(ticker or "").strip().upper()
+
+    if (
+        len(ticker) == 10
+        and ticker.startswith("A")
+        and ticker[1:7].isalnum()
+        and ticker[7:] in [".KS", ".KQ"]
+    ):
+        return ticker[1:]
+
+    return ticker
+
+def normalize_kr_ticker(ticker: str):
+    ticker = str(ticker or "").strip().upper()
+
+    if (
+        len(ticker) == 10
+        and ticker.startswith("A")
+        and ticker[1:7].isalnum()
+        and ticker[7:] in [".KS", ".KQ"]
+    ):
+        return ticker[1:]
+
+    return ticker
 
 def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
     """
@@ -304,7 +461,7 @@ def normalize_stock_pool(stock_pool):
         else:
             raise ValueError(f"잘못된 종목 입력 형식입니다: {item}")
 
-        ticker = str(ticker).strip() if ticker else ""
+        ticker = normalize_kr_ticker(ticker)
         company = str(company).strip() if company else ""
 
         if not ticker or not company:
@@ -898,16 +1055,12 @@ def save_report_files(output):
         result_dir = os.path.join("result", result_date)
         os.makedirs(result_dir, exist_ok=True)
 
-        # 1. 전체 summary 저장
-        summary_file = os.path.join(result_dir, "summary.md")
+        reports = output.get("reports", [])
 
-        with open(summary_file, "w", encoding="utf-8") as f:
-            f.write(output["summary"])
+        logger.info(f"save_report_files input reports count: {len(reports)}")
 
-        logger.info(f"💾 전체 요약 리포트 저장 완료 → {summary_file}")
-
-        # 2. 종목별 개별 파일 저장
-        for item in output["reports"]:
+        # 1. 종목별 개별 파일 저장
+        for item in reports:
             ticker = sanitize_filename(item["ticker"])
             company = sanitize_filename(item["company"])
 
@@ -919,12 +1072,24 @@ def save_report_files(output):
 
             logger.info(f"💾 종목별 리포트 저장 완료 → {file_path}")
 
+        # 2. 기존 개별 리포트와 이번 실행 결과를 합쳐 summary.md 생성
+        summary_file = os.path.join(result_dir, "summary.md")
+        summary_seed = build_summary_from_output_reports(output)
+        summary_content = build_merged_summary(result_dir, summary_seed)
+
+        with open(summary_file, "w", encoding="utf-8") as f:
+            f.write(summary_content)
+
+        logger.info(
+            f"💾 전체 요약 리포트 저장 완료 → {summary_file}, "
+            f"summary reports count={len(reports)}"
+        )
+
         return result_dir
 
     except Exception as e:
         logger.exception(f"❌ 리포트 파일 저장 실패: {e}")
         raise
-
 
 if __name__ == "__main__":
     output = run_financial_crew()

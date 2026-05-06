@@ -1,6 +1,6 @@
 import React from 'react';
 
-function MacroCard({ title, value, change, suffix = '' }) {
+function MacroCard({ title, value, change, suffix = '', featured = false }) {
   const rawChange = typeof change === 'string' ? change.trim() : 'N/A';
   const hasValidChange = rawChange && rawChange !== 'N/A';
 
@@ -13,40 +13,28 @@ function MacroCard({ title, value, change, suffix = '' }) {
   const displayChange = hasValidChange ? rawChange.replace('-', '') : 'N/A';
 
   return (
-    <div className="col">
-      <div className="card h-100 border-0 shadow-sm">
-        <div className="card-body">
-          <div className="text-muted mb-2" style={{ fontSize: '0.95rem' }}>
+    <div className={`col-6 col-lg macro-card-col ${featured ? 'macro-card-featured' : ''}`}>
+      <div className="card macro-card h-100 border-0 shadow-sm">
+        <div className="card-body macro-card-body">
+          <div className="text-muted mb-1 macro-card-title">
             {title}
           </div>
 
           <div
-            className="fw-bold text-dark"
-            style={{
-              fontSize: '2rem',
-              lineHeight: 1.2,
-              whiteSpace: 'nowrap',
-            }}
+            className="fw-bold text-dark macro-card-value"
           >
             {value || 'N/A'}
             {suffix}
           </div>
 
           <div
-            className={`fw-semibold mt-2 ${changeColorClass}`}
-            style={{
-              fontSize: '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              flexWrap: 'wrap',
-            }}
+            className={`fw-semibold mt-1 macro-card-change ${changeColorClass}`}
           >
             {hasValidChange ? (
               <>
                 <span>{changeArrow}</span>
                 <span>{displayChange}</span>
-                <span className="text-muted" style={{ fontSize: '0.9rem' }}>
+                <span className="text-muted macro-card-period">
                   (1개월)
                 </span>
               </>

@@ -1,20 +1,30 @@
-import React, { useState } from 'react';
+import React from 'react';
 import MainTop from './MainTop';
 import MainBody from './MainBody';
 import ReportGenerator from '../report-generator/ReportGenerator';
 
-function Main() {
-  const [reportRefreshKey, setReportRefreshKey] = useState(0);
-
-  const handleReportGenerated = () => {
-    setReportRefreshKey((prev) => prev + 1);
-  };
-
+function Main({
+  reportRefreshKey = 0,
+  onStartReportJob,
+  isReportWorking = false,
+  reportJobStatus = '',
+  reportStatusMessage = '',
+}) {
   return (
-    <div className="container mt-4">
+    <div className="container main-page-container mt-4">
       <MainTop refreshKey={reportRefreshKey} />
-      <ReportGenerator onReportGenerated={handleReportGenerated} />
-      <MainBody refreshKey={reportRefreshKey} />
+
+      <MainBody
+        refreshKey={reportRefreshKey}
+        sideContent={
+          <ReportGenerator
+            onStartReportJob={onStartReportJob}
+            isWorking={isReportWorking}
+            jobStatus={reportJobStatus}
+            statusMessage={reportStatusMessage}
+          />
+        }
+      />
     </div>
   );
 }

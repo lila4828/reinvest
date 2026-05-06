@@ -1,31 +1,31 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './ReportGenerator.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-function ReportGenerator({ onReportGenerated }) {
+function ReportGenerator({
+    onStartReportJob,
+    isWorking = false,
+    jobStatus = '',
+    statusMessage = '',
+}) {
     const [keyword, setKeyword] = useState('');
     const [stockOptions, setStockOptions] = useState([]);
     const [searchResults, setSearchResults] = useState([]);
-    const [selectedStock, setSelectedStock] = useState(null);
+    const [selectedStocks, setSelectedStocks] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
-
-    const [jobId, setJobId] = useState('');
-    const [jobStatus, setJobStatus] = useState('');
-    const [statusMessage, setStatusMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-    const pollingTimerRef = useRef(null);
     const searchTimerRef = useRef(null);
 
-    const stopPolling = () => {
-        if (pollingTimerRef.current) {
-            clearInterval(pollingTimerRef.current);
-            pollingTimerRef.current = null;
-        }
-    };
+    const visibleStockOptions =
+        searchResults.length > 0 ? searchResults : stockOptions;
+
+    const selectedStockKeys = useMemo(
+        () => new Set(selectedStocks.map((stock) => stock.ticker)),
+        [selectedStocks],
+    );
 
     const fetchStockOptions = async () => {
         try {
@@ -47,67 +47,6 @@ function ReportGenerator({ onReportGenerated }) {
         }
     };
 
-    const fetchJobStatus = async (targetJobId) => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/report-status/${targetJobId}`, {
-                method: 'GET',
-                credentials: 'include',
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.detail || '작업 상태를 확인하지 못했습니다.');
-            }
-
-            setJobStatus(data.status);
-
-            if (data.status === 'pending') {
-                setStatusMessage('리포트 생성 대기 중...');
-                return;
-            }
-
-            if (data.status === 'running') {
-                setStatusMessage('리포트 생성 중...');
-                return;
-            }
-
-            if (data.status === 'success') {
-                stopPolling();
-                setIsSubmitting(false);
-                setStatusMessage('리포트 생성이 완료되었습니다. 최신 리포트를 자동으로 불러옵니다.');
-
-                if (typeof onReportGenerated === 'function') {
-                    onReportGenerated();
-                }
-
-                return;
-            }
-
-            if (data.status === 'failed') {
-                stopPolling();
-                setIsSubmitting(false);
-                setErrorMessage(data.error || '리포트 생성 중 오류가 발생했습니다.');
-                setStatusMessage('');
-            }
-        } catch (error) {
-            stopPolling();
-            setIsSubmitting(false);
-            setErrorMessage(error.message);
-            setStatusMessage('');
-        }
-    };
-
-    const startPolling = (targetJobId) => {
-        stopPolling();
-
-        fetchJobStatus(targetJobId);
-
-        pollingTimerRef.current = setInterval(() => {
-            fetchJobStatus(targetJobId);
-        }, 3000);
-    };
-
     const searchStocks = async (searchKeyword) => {
         const cleanKeyword = searchKeyword.trim();
 
@@ -125,7 +64,7 @@ function ReportGenerator({ onReportGenerated }) {
                 {
                     method: 'GET',
                     credentials: 'include',
-                }
+                },
             );
 
             const data = await res.json();
@@ -137,7 +76,7 @@ function ReportGenerator({ onReportGenerated }) {
             setSearchResults(data.results || []);
 
             if (!data.results || data.results.length === 0) {
-                setErrorMessage('검색 결과가 없습니다. 영문명 또는 티커로 다시 검색해 주세요.');
+                setErrorMessage(data.message || '검색 결과가 없습니다. 종목명이나 티커로 다시 검색해 주세요.');
             }
         } catch (error) {
             setSearchResults([]);
@@ -151,7 +90,6 @@ function ReportGenerator({ onReportGenerated }) {
         const value = event.target.value;
 
         setKeyword(value);
-        setSelectedStock(null);
         setErrorMessage('');
         setIsDropdownOpen(true);
 
@@ -170,61 +108,58 @@ function ReportGenerator({ onReportGenerated }) {
     };
 
     const handleSelectStock = (stock) => {
-        setSelectedStock(stock);
-        setKeyword(`${stock.company} (${stock.ticker})`);
+        if (!stock?.ticker) return;
+
+        if (selectedStockKeys.has(stock.ticker)) {
+            setKeyword('');
+            setSearchResults([]);
+            setIsDropdownOpen(false);
+            setErrorMessage('이미 선택한 종목입니다.');
+            return;
+        }
+
+        setSelectedStocks((prev) => [
+            ...prev,
+            stock,
+        ]);
+
+        setKeyword('');
         setSearchResults([]);
         setIsDropdownOpen(false);
+        setErrorMessage('');
+    };
+
+    const handleRemoveStock = (ticker) => {
+        setSelectedStocks((prev) =>
+            prev.filter((stock) => stock.ticker !== ticker)
+        );
+        setErrorMessage('');
+    };
+
+    const handleClearSelectedStocks = () => {
+        setSelectedStocks([]);
         setErrorMessage('');
     };
 
     const handleSubmit = async (event) => {
         event.preventDefault();
 
-        if (!selectedStock) {
-            setErrorMessage('검색 결과에서 분석할 종목을 선택해 주세요.');
+        if (selectedStocks.length === 0) {
+            setErrorMessage('분석할 종목을 1개 이상 선택해 주세요.');
             return;
         }
 
-        setIsSubmitting(true);
+        if (typeof onStartReportJob !== 'function') {
+            setErrorMessage('리포트 생성 함수가 연결되지 않았습니다.');
+            return;
+        }
+
         setErrorMessage('');
-        setStatusMessage('리포트 생성 요청 중...');
-        setJobStatus('');
-        setJobId('');
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/run-report`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    stocks: [
-                        {
-                            ticker: selectedStock.ticker,
-                            company: selectedStock.company,
-                            exchange: selectedStock.exchange,
-                            quote_type: selectedStock.quote_type,
-                        },
-                    ],
-                }),
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.detail || '리포트 생성 요청에 실패했습니다.');
-            }
-
-            setJobId(data.job_id);
-            setJobStatus(data.status);
-            setStatusMessage('리포트 생성 작업이 시작되었습니다.');
-
-            startPolling(data.job_id);
+            await onStartReportJob(selectedStocks);
         } catch (error) {
-            setIsSubmitting(false);
             setErrorMessage(error.message);
-            setStatusMessage('');
         }
     };
 
@@ -232,33 +167,23 @@ function ReportGenerator({ onReportGenerated }) {
         fetchStockOptions();
 
         return () => {
-            stopPolling();
-
             if (searchTimerRef.current) {
                 clearTimeout(searchTimerRef.current);
             }
         };
     }, []);
 
-    const isWorking =
-        isSubmitting ||
-        jobStatus === 'pending' ||
-        jobStatus === 'running';
-
-    const visibleStockOptions =
-        searchResults.length > 0 ? searchResults : stockOptions;
-
     return (
         <div className="report-generator-card p-4 mb-4 shadow-sm border rounded">
             <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
                 <div>
-                    <h4 className="fw-bold text-primary mb-1">🧾 새 리포트 생성</h4>
+                    <h4 className="fw-bold text-primary mb-1">AI 리포트 생성</h4>
                     <p className="text-muted mb-0 small">
-                        종목명을 검색해서 선택하면 백그라운드에서 리포트를 생성합니다.
+                        종목을 여러 개 선택하면 백그라운드에서 순차적으로 투자 리포트를 생성합니다.
                     </p>
                 </div>
 
-                {jobStatus && (
+                {isWorking && jobStatus && (
                     <span className={`badge report-job-badge status-${jobStatus}`}>
                         {jobStatus}
                     </span>
@@ -268,13 +193,15 @@ function ReportGenerator({ onReportGenerated }) {
             <form onSubmit={handleSubmit}>
                 <div className="row g-3 align-items-end">
                     <div className="col-md-9">
-                        <label className="form-label fw-bold">종목 검색</label>
+                        <label className="form-label fw-bold">
+                            종목 검색
+                        </label>
 
                         <div className="stock-search-wrapper">
                             <input
                                 type="text"
                                 className="form-control"
-                                placeholder="종목명을 입력하거나 선택하세요"
+                                placeholder="종목명 또는 티커를 입력한 뒤 검색 결과를 선택해 주세요"
                                 value={keyword}
                                 onChange={handleKeywordChange}
                                 onFocus={() => {
@@ -289,24 +216,39 @@ function ReportGenerator({ onReportGenerated }) {
                                 </div>
                             )}
 
-                            {isDropdownOpen && visibleStockOptions.length > 0 && !selectedStock && (
+                            {isDropdownOpen && visibleStockOptions.length > 0 && keyword.trim() && (
                                 <div className="stock-search-results shadow-sm border rounded">
-                                    {visibleStockOptions.map((stock) => (
-                                        <button
-                                            type="button"
-                                            key={`${stock.ticker}-${stock.company}`}
-                                            className="stock-search-item"
-                                            onClick={() => handleSelectStock(stock)}
-                                        >
-                                            <div className="fw-bold">
-                                                {stock.company}
-                                            </div>
-                                            <div className="small text-muted">
-                                                {stock.ticker}
-                                                {stock.exchange ? ` · ${stock.exchange}` : ''}
-                                            </div>
-                                        </button>
-                                    ))}
+                                    {visibleStockOptions.map((stock) => {
+                                        const isSelected = selectedStockKeys.has(stock.ticker);
+
+                                        return (
+                                            <button
+                                                type="button"
+                                                key={`${stock.ticker}-${stock.company}`}
+                                                className={`stock-search-item ${isSelected ? 'selected' : ''}`}
+                                                onClick={() => handleSelectStock(stock)}
+                                                disabled={isSelected || isWorking}
+                                            >
+                                                <div className="d-flex justify-content-between gap-2">
+                                                    <div>
+                                                        <div className="fw-bold">
+                                                            {stock.company}
+                                                        </div>
+                                                        <div className="small text-muted">
+                                                            {stock.ticker}
+                                                            {stock.exchange ? ` · ${stock.exchange}` : ''}
+                                                        </div>
+                                                    </div>
+
+                                                    {isSelected && (
+                                                        <span className="stock-selected-label">
+                                                            선택됨
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -316,29 +258,63 @@ function ReportGenerator({ onReportGenerated }) {
                         <button
                             type="submit"
                             className="btn btn-primary fw-bold"
-                            disabled={isWorking || !selectedStock}
+                            disabled={isWorking || selectedStocks.length === 0}
                         >
-                            {isWorking ? '생성 중...' : '리포트 생성'}
+                            {isWorking
+                                ? '생성 중...'
+                                : `${selectedStocks.length || ''}${selectedStocks.length ? '개 ' : ''}리포트 생성`}
                         </button>
                     </div>
                 </div>
             </form>
 
-            {selectedStock && (
-                <div className="alert alert-light border py-2 mt-3 mb-0 small">
-                    선택 종목:{' '}
-                    <strong>{selectedStock.company}</strong>{' '}
-                    <span className="text-muted">({selectedStock.ticker})</span>
+            {selectedStocks.length > 0 && (
+                <div className="selected-stock-panel mt-3">
+                    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                        <strong className="small">
+                            선택 종목 {selectedStocks.length}개
+                        </strong>
+
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={handleClearSelectedStocks}
+                            disabled={isWorking}
+                        >
+                            전체 해제
+                        </button>
+                    </div>
+
+                    <div className="selected-stock-list">
+                        {selectedStocks.map((stock) => (
+                            <div
+                                key={`${stock.ticker}-${stock.company}`}
+                                className="selected-stock-chip"
+                            >
+                                <div>
+                                    <strong>{stock.company}</strong>
+                                    <span className="text-muted ms-1">
+                                        ({stock.ticker})
+                                    </span>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    className="selected-stock-remove"
+                                    onClick={() => handleRemoveStock(stock.ticker)}
+                                    disabled={isWorking}
+                                    aria-label={`${stock.company} 선택 해제`}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
-            {statusMessage && (
-                <div className="alert alert-info py-2 mt-3 mb-0">
-                    {isWorking && (
-                        <span className="spinner-border spinner-border-sm me-2" role="status">
-                            <span className="visually-hidden">Loading...</span>
-                        </span>
-                    )}
+            {statusMessage && isWorking && (
+                <div className="small text-muted mt-3">
                     {statusMessage}
                 </div>
             )}

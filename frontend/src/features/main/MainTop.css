@@ -1,3 +1,79 @@
+.main-page-container {
+  max-width: 1240px;
+}
+
 .main-top-panel {
   background-color: #ffffff;
+}
+
+.main-top-updated {
+  font-size: 0.88rem;
+}
+
+.macro-card-row {
+  justify-content: center;
+}
+
+.macro-card-body {
+  padding: 14px 16px;
+}
+
+.macro-card-title {
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.macro-card-value {
+  overflow: hidden;
+  font-size: 1.45rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.macro-card-change {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  font-size: 0.86rem;
+}
+
+.macro-card-period {
+  font-size: 0.78rem;
+}
+
+@media (max-width: 991.98px) {
+  .macro-card-featured {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .macro-card-body {
+    text-align: center;
+  }
+
+  .macro-card-change {
+    justify-content: center;
+  }
+
+  .macro-card-featured .macro-card-value {
+    font-size: 1.6rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .main-top-updated {
+    display: block;
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .macro-card-body {
+    padding: 12px;
+  }
+
+  .macro-card-value {
+    font-size: 1.25rem;
+  }
 }

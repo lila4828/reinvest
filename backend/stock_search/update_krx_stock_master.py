@@ -19,6 +19,7 @@ API_KEY = os.getenv("DATA_GO_KR_API_KEY")
 
 API_URL = "https://apis.data.go.kr/1160100/service/GetKrxListedInfoService/getItemInfo"
 
+
 def get_recent_business_dates(days=10):
     today = datetime.now()
 
@@ -44,6 +45,46 @@ def market_to_yahoo_suffix(market):
         return ".KQ"
 
     return None
+
+
+def normalize_krx_code(code):
+    """
+    KRX srtnCd 원본 코드 정규화.
+
+    예:
+    A005930 -> 005930
+    A000660 -> 000660
+    A0004V0 -> 0004V0
+    A0004Y0 -> 0004Y0
+
+    단, 무조건 A를 제거하지 않고
+    'A + 영문/숫자 6자리' 형태일 때만 제거한다.
+    """
+    code = str(code or "").strip().upper()
+
+    if len(code) == 7 and code.startswith("A") and code[1:].isalnum():
+        return code[1:]
+
+    return code
+
+
+def merge_keywords(*keyword_groups):
+    merged = []
+
+    for group in keyword_groups:
+        if not group:
+            continue
+
+        if not isinstance(group, list):
+            group = [group]
+
+        for keyword in group:
+            text = str(keyword or "").strip()
+
+            if text and text not in merged:
+                merged.append(text)
+
+    return merged
 
 
 def fetch_krx_items(base_date):
@@ -75,11 +116,12 @@ def fetch_krx_items(base_date):
 
 def convert_to_stock_master(items):
     results = []
-
     seen = set()
 
     for item in items:
-        code = str(item.get("srtnCd", "")).strip()
+        raw_code = str(item.get("srtnCd", "")).strip().upper()
+        code = normalize_krx_code(raw_code)
+
         name = str(item.get("itmsNm", "")).strip()
         company = str(item.get("corpNm", "")).strip() or name
         market = str(item.get("mrktCtg", "")).strip()
@@ -90,27 +132,37 @@ def convert_to_stock_master(items):
             continue
 
         ticker = f"{code}{suffix}"
+        raw_ticker = f"{raw_code}{suffix}" if raw_code else ""
 
         if ticker in seen:
             continue
 
         seen.add(ticker)
 
-        results.append({
-            "ticker": ticker,
-            "company": name,
-            "exchange": market,
-            "quote_type": "EQUITY",
-            "keywords": [
+        keywords = merge_keywords(
+            [
                 code,
                 ticker,
                 name,
                 company,
                 market,
             ],
+            [
+                raw_code,
+                raw_ticker,
+            ] if raw_code and raw_code != code else [],
+        )
+
+        results.append({
+            "ticker": ticker,
+            "company": name,
+            "exchange": market,
+            "quote_type": "EQUITY",
+            "keywords": keywords,
         })
 
     return results
+
 
 def load_json_list(file_path: Path):
     if not file_path.exists():
@@ -161,7 +213,7 @@ def main():
         rebuild_stock_master()
 
         return
-    
+
     raise RuntimeError("최근 영업일 기준으로도 KRX 종목 데이터를 찾지 못했습니다.")
 
 

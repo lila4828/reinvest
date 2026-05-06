@@ -1,9 +1,9 @@
 import React from 'react';
 import ReportBody from './ReportBody';
 
-function Report() {
+function Report({ refreshKey = 0 }) {
   return (
-    <ReportBody />
+    <ReportBody refreshKey={refreshKey} />
   );
 }
 

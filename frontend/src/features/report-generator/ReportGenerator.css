@@ -62,3 +62,304 @@
 .stock-search-item:last-child {
   border-bottom: 0;
 }
+
+.report-progress-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.report-progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.report-progress-header > span {
+  min-width: 46px;
+  color: #0d6efd;
+  font-weight: 800;
+  text-align: right;
+}
+
+.report-progress-job {
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.report-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe8f5;
+}
+
+.report-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f6feb, #25a06a);
+  transition: width 0.4s ease;
+}
+
+.report-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.report-progress-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  color: #6c757d;
+}
+
+.report-progress-step > span {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border: 2px solid #b8c4d6;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.report-progress-step strong {
+  display: block;
+  color: #495057;
+  font-size: 0.86rem;
+}
+
+.report-progress-step p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.report-progress-step.active > span {
+  border-color: #0d6efd;
+  background: #0d6efd;
+  box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.12);
+}
+
+.report-progress-step.active strong {
+  color: #0d6efd;
+}
+
+.report-progress-step.complete > span {
+  border-color: #198754;
+  background: #198754;
+}
+
+.report-progress-panel.status-success {
+  border-color: #badbcc;
+  background: #f4fbf7;
+}
+
+.report-progress-panel.status-failed {
+  border-color: #f1aeb5;
+  background: #fff7f7;
+}
+
+.report-progress-panel.status-failed .report-progress-bar {
+  background: #dc3545;
+}
+
+@media (max-width: 768px) {
+  .report-progress-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------
+   App Toast Viewport
+--------------------------------------------------------- */
+
+.app-toast-viewport {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1080;
+  width: min(460px, calc(100vw - 32px));
+  height: 0;
+  pointer-events: none;
+}
+
+.app-toast-item {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  pointer-events: auto;
+  transition:
+    transform 0.35s ease,
+    opacity 0.25s ease;
+}
+
+.app-toast-visible {
+  opacity: 1;
+}
+
+.app-toast-hidden {
+  opacity: 0;
+}
+
+/* ---------------------------------------------------------
+   Report Progress Toast
+--------------------------------------------------------- */
+
+.report-progress-toast {
+  width: 100%;
+  margin-top: 0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
+}
+
+.report-toast-main {
+  min-width: 0;
+}
+
+.report-toast-title {
+  display: block;
+  color: #212529;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.report-toast-message {
+  margin-top: 3px;
+  color: #495057;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.report-toast-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.report-toast-percent {
+  min-width: 46px;
+  color: #0d6efd;
+  font-weight: 800;
+  text-align: right;
+}
+
+.report-toast-close {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(108, 117, 125, 0.12);
+  color: #495057;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.report-toast-close:hover {
+  background: rgba(108, 117, 125, 0.22);
+}
+
+.report-toast-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff0f1;
+  color: #b02a37;
+  line-height: 1.45;
+}
+
+.report-progress-toast.status-success .report-toast-percent {
+  color: #198754;
+}
+
+.report-progress-toast.status-failed .report-toast-percent {
+  color: #dc3545;
+}
+
+@media (max-width: 768px) {
+  .app-toast-viewport {
+    right: 16px;
+    bottom: 16px;
+    width: calc(100vw - 32px);
+  }
+
+  .report-progress-toast {
+    padding: 14px;
+  }
+}
+/* ---------------------------------------------------------
+   Multi Stock Selection
+--------------------------------------------------------- */
+
+.stock-search-item.selected,
+.stock-search-item:disabled {
+  cursor: not-allowed;
+  background-color: #f8f9fa;
+  opacity: 0.72;
+}
+
+.stock-selected-label {
+  align-self: flex-start;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #e7f1ff;
+  color: #0d6efd;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.selected-stock-panel {
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.selected-stock-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selected-stock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 0.88rem;
+}
+
+.selected-stock-remove {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.selected-stock-remove:hover {
+  background: rgba(220, 53, 69, 0.18);
+}
+
+.selected-stock-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

@@ -226,8 +226,8 @@ function MainTop({ refreshKey = 0 }) {
 
   if (macroData.loading) {
     return (
-      <div className="main-top-panel p-4 mb-4 shadow-sm border rounded">
-        <h4 className="fw-bold text-primary mb-3">🌍 AI 분석 거시경제 현황</h4>
+      <div className="main-top-panel p-3 mb-3 shadow-sm border rounded">
+        <h5 className="fw-bold text-primary mb-2">🌍 AI 분석 거시경제 현황</h5>
         <div className="text-center text-muted">
           <div className="spinner-border spinner-border-sm me-2" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -240,30 +240,30 @@ function MainTop({ refreshKey = 0 }) {
 
   if (macroData.error) {
     return (
-      <div className="main-top-panel p-4 mb-4 shadow-sm border rounded bg-light">
-        <h4 className="fw-bold text-danger mb-3">⚠️ 데이터 로딩 오류</h4>
+      <div className="main-top-panel p-3 mb-3 shadow-sm border rounded bg-light">
+        <h5 className="fw-bold text-danger mb-2">⚠️ 데이터 로딩 오류</h5>
         <div className="text-center text-danger">{macroData.error}</div>
       </div>
     );
   }
 
   return (
-    <div className="main-top-panel p-4 mb-4 shadow-sm border rounded">
-      <h4 className="fw-bold text-primary mb-3 d-flex align-items-end flex-wrap">
+    <div className="main-top-panel p-3 mb-3 shadow-sm border rounded">
+      <h5 className="fw-bold text-primary mb-2 d-flex align-items-end flex-wrap">
         🌍 AI 분석 거시경제 현황
         {macroData.updateTime && (
-          <span className="fs-6 text-muted ms-2 fw-normal mb-1">
+          <span className="main-top-updated text-muted ms-2 fw-normal mb-1">
             ({macroData.updateTime} 기준)
           </span>
         )}
-      </h4>
+      </h5>
 
-      <div className="row g-3">
-        <MacroCard title="환율 (원/달러)" value={macroData.exchangeRate?.value} change={macroData.exchangeRate?.change} />
-        <MacroCard title="나스닥 지수" value={macroData.nasdaq?.value} change={macroData.nasdaq?.change} />
-        <MacroCard title="미국 10년물 금리" value={macroData.us10y?.value} change={macroData.us10y?.change} suffix="%" />
-        <MacroCard title="WTI 원유 (달러)" value={macroData.wti?.value} change={macroData.wti?.change} />
-        <MacroCard title="VIX 공포지수" value={macroData.vix?.value} change={macroData.vix?.change} />
+      <div className="row g-2 macro-card-row">
+        <MacroCard title="환율" value={macroData.exchangeRate?.value} change={macroData.exchangeRate?.change} featured />
+        <MacroCard title="나스닥" value={macroData.nasdaq?.value} change={macroData.nasdaq?.change} />
+        <MacroCard title="미국 10년 국채" value={macroData.us10y?.value} change={macroData.us10y?.change} suffix="%" />
+        <MacroCard title="원유 가격(유가)" value={macroData.wti?.value} change={macroData.wti?.change} />
+        <MacroCard title="미국시장 공포지수" value={macroData.vix?.value} change={macroData.vix?.change} />
       </div>
     </div>
   );

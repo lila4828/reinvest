@@ -9,7 +9,7 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-export function useReports() {
+export function useReports(refreshKey = 0) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [reports, setReports] = useState([]);
@@ -74,7 +74,7 @@ export function useReports() {
 
         setIsLoadingDetail(false);
       });
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (isLoadingList) return;

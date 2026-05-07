@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,25 @@ def extract_report_summary(md_report: str):
     if not md_report or not isinstance(md_report, str):
         return ""
 
-    return md_report.split("\n---")[0].strip()
+    return normalize_summary_card_format(md_report.split("\n---")[0].strip())
+
+
+def normalize_summary_card_format(summary: str):
+    summary = re.sub(
+        r"^#\s+(?!📈)(.+ 심층 투자 전략 리포트)",
+        r"# 📈 \1",
+        summary,
+        count=1,
+    )
+    summary = summary.replace("**목표 매수가**", "**권장 매수가**")
+    summary = summary.replace("**방어선**", "**하락 시 방어선/저항선**")
+    summary = summary.replace("### 한 줄 결론", "### 💡 수석 애널리스트 한 줄 결론")
+    summary = summary.replace(
+        "### 3줄 요약 (Executive Summary)",
+        "### 🎯 3줄 요약 (Executive Summary)",
+    )
+
+    return summary
 
 
 def build_failed_report_card(company: str, report: str):

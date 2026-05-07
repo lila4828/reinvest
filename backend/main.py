@@ -17,7 +17,7 @@ from flows.macro.task import MacroTask
 from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
 
-# ????ｋ뽫뜏?????嶺??????????썹땟怨꼲??????꾣뤃管爾??
+# 유튜브 자동화 파이프라인 임포트
 from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
 from vector_db.update_youtube_db import build_local_youtube_db
 from vector_db.build_vector_db import build_db_from_transcripts
@@ -25,9 +25,9 @@ from services.report_file_service import save_report_files
 from services.summary_service import extract_report_summary
 from schemas.report_state import ReportState, create_initial_report_state
 
-# ??嶺?筌???汝??吏???????됰Ŧ???븍툖異????繹먮굟瑗??from logging.handlers import RotatingFileHandler
+# 시스템 로깅 및 디버깅 레이어
 
-# 0. ?????ъ졒 ??⑤슢堉????汝??吏??좉텣?
+# 0. 환경 변수 로드
 load_dotenv()
 
 log_file_handler = RotatingFileHandler(
@@ -83,7 +83,7 @@ SCORING_CONFIG = {
 def require_env(name: str):
     value = os.getenv(name)
     if not value:
-        raise RuntimeError(f"?????ъ졒??⑤슢堉???????썹땟怨꼲? {name}")
+        raise RuntimeError(f"환경변수 누락: {name}")
     return value
 
 
@@ -103,7 +103,7 @@ def calculate_macro_score(exchange_rate, us_10y_yield, vix_index):
     score = 0
     reasons = []
 
-    # 1) ???? VIX
+    # 1) 투자 심리: VIX
     if vix_index >= cfg["vix_high_risk"]:
         score -= 1
         reasons.append(f"VIX {vix_index} high risk")
@@ -111,7 +111,7 @@ def calculate_macro_score(exchange_rate, us_10y_yield, vix_index):
         score += 1
         reasons.append(f"VIX {vix_index} stable")
 
-    # 2) ????◈?뙿?? ???붺몭???10????썼キ????궰????
+    # 2) 할인율: 미국 10년물 금리
     if us_10y_yield >= cfg["us_10y_high_risk"]:
         score -= 1
         reasons.append(f"US 10Y {us_10y_yield} high yield pressure")
@@ -119,7 +119,7 @@ def calculate_macro_score(exchange_rate, us_10y_yield, vix_index):
         score += 1
         reasons.append(f"US 10Y {us_10y_yield} low yield relief")
 
-    # 3) ????볥궙筌?
+    # 3) 환율
     if exchange_rate >= cfg["exchange_rate_high_risk"]:
         score -= 1
         reasons.append(f"exchange rate {exchange_rate} high FX pressure")
@@ -144,7 +144,7 @@ def calculate_fundamental_score(net_income, fcf, revenue, debt_to_equity=None):
     score = 0
     reasons = []
 
-    # ??嶺뚮?????
+    # 순이익
     if net_income[-1] > 0 and net_income[-1] >= net_income[-2]:
         score += 1
         reasons.append("recent net income positive or improved")
@@ -160,7 +160,7 @@ def calculate_fundamental_score(net_income, fcf, revenue, debt_to_equity=None):
         score -= 1
         reasons.append("recent FCF negative")
 
-    # ?꿔꺂?????
+    # 매출
     if revenue[-1] > revenue[-2]:
         score += 1
         reasons.append("recent revenue declined")
@@ -168,13 +168,13 @@ def calculate_fundamental_score(net_income, fcf, revenue, debt_to_equity=None):
         score -= 1
         reasons.append("recent revenue growth")
 
-    # ???낇뀘???????
+    # 부채비율
     debt_warning_cutoff = SCORING_CONFIG["financial"]["debt_warning_cutoff"]
     if isinstance(debt_to_equity, (int, float)) and debt_to_equity > debt_warning_cutoff:
         score -= 1
         reasons.append(f"debt-to-equity {debt_to_equity}% exceeds 100%")
 
-    # ??縕????????브컯???熬곣뫖?삥납?: -3 ~ +3????Β????????뎡
+    # 과도한 영향 방지: -3 ~ +3으로 제한
     score = max(-3, min(3, score))
 
     return score, reasons
@@ -194,7 +194,7 @@ def format_price(value, unit):
         return "N/A"
 
     if unit == "KRW":
-        return f"{value:,.0f} KRW"
+        return f"{value:,.0f}원"
 
     return f"${value:,.2f}"
 
@@ -224,8 +224,8 @@ def normalize_kr_ticker(ticker: str):
 
 def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
     """
-    ?꿔꺂????쭍?瑜귣젺?AnalysisAgent??????醫롫뼰 ????怨몄７???癲ル슢캉????嶺뚮㉡???
-    ?????????雅?JSON?????녾컯嶺????鶯ㅺ동????類㎮뵾?????ｋ???潁???/ Pydantic ??????????곌숯 ????꾣뤃?????影?れ쉬傭??
+    최종 AnalysisAgent에 전달할 입력을 압축한다.
+    너무 긴 원본 JSON을 그대로 넣으면 토큰 초과 또는 Pydantic 파싱 실패 위험이 커진다.
     """
     compact_accounting = {
         "ticker": acc_data.get("ticker"),
@@ -267,13 +267,13 @@ def safe_kickoff(crew, label: str):
     try:
         return crew.kickoff()
     except Exception as e:
-        logger.exception(f"??{label} kickoff ?????곌숯: {e}")
+        logger.exception(f"{label} kickoff 실패: {e}")
         return DummyResult()
 
 def normalize_stock_pool(stock_pool):
     """
-    ?癲? ????怨몄７ ????띻샴???????????? main.py ???? ??? ?癲ル슢캉??쏆춿????Β????⑤슢堉?????쑩???
-    ??? ?癲ル슢캉??쏆춿? [("TSLA", "??????), ("005930.KS", "??濚밸Þ??????썹땟??)]
+    외부 입력 종목 데이터를 main.py 내부 표준 형식으로 변환한다.
+    표준 형식: [("TSLA", "Tesla"), ("005930.KS", "Samsung Electronics")]
     """
 
     default_stock_pool = [
@@ -286,7 +286,7 @@ def normalize_stock_pool(stock_pool):
         return default_stock_pool
 
     if not isinstance(stock_pool, list) or not stock_pool:
-        raise ValueError("stock_pool?? ????猷뱀쟼???? ??? list??????嶺뚮ㅎ????")
+        raise ValueError("stock_pool은 비어 있지 않은 list여야 합니다.")
 
     normalized = []
 
@@ -297,13 +297,13 @@ def normalize_stock_pool(stock_pool):
         elif isinstance(item, (list, tuple)) and len(item) == 2:
             ticker, company = item
         else:
-            raise ValueError(f"???????????띻샴??????怨몄７ ?癲ル슢캉??쏆춿?????뉖뤁?? {item}")
+            raise ValueError(f"잘못된 종목 입력 형식입니다: {item}")
 
         ticker = normalize_kr_ticker(ticker)
         company = str(company).strip() if company else ""
 
         if not ticker or not company:
-            raise ValueError(f"ticker/company ??醫딆┫???????猷뱀쟼???????????딅젩: {item}")
+            raise ValueError(f"ticker/company 값이 비어 있습니다: {item}")
 
         normalized.append((ticker, company))
 
@@ -371,23 +371,23 @@ def create_crew_components(fast_llm, fact_llm, smart_llm):
 
 
 def update_youtube_vector_db():
-    logger.debug("???[0??壤굿???? ????ｋ뽫뜏???꿔꺂????쭍??????노듋嶺??癲ル슢캉????..")
+    logger.debug("[0단계] 유튜브 최신 영상 확인...")
 
     try:
         new_vids = fetch_all_latest_youtube_ids(fetch_limit=5)
 
         if new_vids:
             logger.info(
-                f"???????ャ렑??????노듋嶺?{len(new_vids)}????醫딆┫?? "
-                f"updating YouTube vector DB"
+                f"유튜브 최신 영상 {len(new_vids)}개 감지. "
+                f"YouTube Vector DB를 업데이트합니다."
             )
             build_local_youtube_db()
             build_db_from_transcripts()
         else:
-            logger.info("no new YouTube videos; using existing DB")
+            logger.info("유튜브 신규 영상 없음. 기존 DB를 사용합니다.")
 
     except Exception as e:
-        logger.exception(f"????ы꺎??????ｋ뽫뜏??DB ?????욍걛???ш끽維???????곌숯 ?????뚯????DB???꿔꺂????紐꾩뗄? {e}")
+        logger.exception(f"유튜브 DB 업데이트 실패. 기존 DB로 진행합니다: {e}")
 
 
 def run_macro_step(macro_agent, macro_tasks, state: ReportState | None = None):
@@ -434,7 +434,7 @@ def run_macro_step(macro_agent, macro_tasks, state: ReportState | None = None):
             vix_index=macro_data.get("vix_index"),
         )
 
-    logger.info(f"???꿔꺂????關臾쇘춯癒?돵?????곗뒩泳??????썹땟??(Macro Score: {macro_score}, ????: {macro_score_reasons})")
+    logger.info(f"매크로 분석 완료 (Macro Score: {macro_score}, 이유: {macro_score_reasons})")
 
     if state is not None:
         state["macro_data"] = {
@@ -480,7 +480,7 @@ def run_accounting_step(
     acc_result = safe_kickoff(financial_crew, f"{company} Accounting Crew")
 
     if not acc_result.pydantic or not getattr(acc_result.pydantic, "is_data_valid", False):
-        msg = f"???[???곗뒩泳??嚥싳쉶瑗??꾧틚?? {company}: ?????????????????볥궚???????곌숯 ??????????????怨몄뵒"
+        msg = f"[분석 중단] {company}: 재무 데이터 수집 실패 또는 파싱 오류"
         logger.error(msg)
         append_report_error(state, msg)
         if state is not None:
@@ -500,7 +500,7 @@ def run_accounting_step(
         or not is_valid_numeric_series(fcf)
         or not is_valid_numeric_series(revenue)
     ):
-        msg = f"???[???곗뒩泳??嚥싳쉶瑗??꾧틚?? {company} FAIL ????: 3??醫딆┻???????????????????낇뀘???????????????????????????怨몄뵒"
+        msg = f"[분석 중단] {company} FAIL 사유: 3개년 재무 데이터 부족 또는 숫자형 데이터 오류"
         logger.warning(msg)
         append_report_error(state, msg)
         if state is not None:
@@ -514,19 +514,19 @@ def run_accounting_step(
 
     if all(ni < 0 for ni in net_income):
         is_fail = True
-        fail_reason = "3-year continuous FCF negative"
+        fail_reason = "3개년 연속 순이익 적자"
     elif all(f < 0 for f in fcf):
         is_fail = True
-        fail_reason = "3-year continuous free cash flow negative"
+        fail_reason = "3개년 연속 잉여현금흐름(FCF) 마이너스"
     elif revenue[-1] <= 0:
         is_fail = True
-        fail_reason = "?꿔꺂????쭍???꿔꺂??????????????????怨몄뵒(0 ???ш끽維??"
+        fail_reason = "최근 매출 데이터 오류(0 이하)"
     elif isinstance(debt_to_equity, (int, float)) and debt_to_equity > 200:
         is_fail = True
-        fail_reason = "debt-to-equity exceeds 200%"
+        fail_reason = "부채비율 200% 초과"
 
     if is_fail:
-        msg = f"???[???곗뒩泳??嚥싳쉶瑗??꾧틚?? {company} FAIL ????: {fail_reason}"
+        msg = f"[분석 중단] {company} FAIL 사유: {fail_reason}"
         logger.warning(msg)
         append_report_error(state, msg)
         if state is not None:
@@ -546,7 +546,7 @@ def run_accounting_step(
     if state is not None:
         state["accounting_data"] = acc_data
 
-    logger.info(f"???????嚥▲굧???????雅?(Fund Score: {fund_score})")
+    logger.info(f"재무 검증 통과 (Fund Score: {fund_score})")
 
     return acc_data, None
 
@@ -568,8 +568,8 @@ def run_research_step(
         )
         return safe_kickoff(crew, f"{company} Research Crew")
     except Exception as e:
-        logger.exception(f"????ы꺎??[{company}] ??잙갭큔??影?뽯눚?????볥궚?????繹먮굝???熬곣뫖利든뜏類ｋ렱????fallback ????쇨덫?? {e}")
-        append_report_error(state, f"??잙갭큔??影?뽯눚?????볥궚?????繹먮굝?? {e}")
+        logger.exception(f"[{company}] 리서치 데이터 수집 실패. fallback 처리: {e}")
+        append_report_error(state, f"리서치 데이터 수집 실패: {e}")
         return DummyResult()
 
 
@@ -579,7 +579,7 @@ def parse_research_result(research_result, company: str, state: ReportState | No
         research_data = {
                 "sentiment_score": 50,
                 "momentum_strength": "LOW",
-                "news_summary": "?꿔꺂????쭍??????◈?뗫┛?섋떋?嚥????????ㅿ폍筌??????????????볥궚???????곌숯",
+                "news_summary": "리서치 데이터 수집 실패로 fallback 처리되었습니다.",
                 "is_data_valid": False,
             }
         research_json = json.dumps(
@@ -634,8 +634,8 @@ def run_youtube_rag_step(
         )
         return safe_kickoff(crew, f"{company} YouTube Crew")
     except Exception as e:
-        logger.exception(f"????ы꺎??[{company}] ????ｋ뽫뜏??????볥궚?????繹먮굝???熬곣뫖利든뜏類ｋ렱????fallback ????쇨덫?? {e}")
-        append_report_error(state, f"????ｋ뽫뜏??????볥궚?????繹먮굝?? {e}")
+        logger.exception(f"[{company}] 유튜브 데이터 수집 실패. fallback 처리: {e}")
+        append_report_error(state, f"유튜브 데이터 수집 실패: {e}")
         return DummyResult()
 
 
@@ -651,7 +651,7 @@ def parse_youtube_result(youtube_result, company: str, state: ReportState | None
                 "mindset_summary": "youtube fallback applied",
                 "market_principle": "youtube fallback applied",
                 "risk_control": "youtube fallback applied",
-                "guru_insight_details": "?꿔꺂????쭍??????◈?뗫┛?섋떋?嚥????????노듋嶺??????????????볥궚???????곌숯",
+                "guru_insight_details": "유튜브 데이터 수집 실패로 fallback 처리되었습니다.",
                 "is_data_valid": False,
             }
         youtube_json = json.dumps(
@@ -667,8 +667,8 @@ def parse_youtube_result(youtube_result, company: str, state: ReportState | None
     freshness_level = getattr(youtube_result.pydantic, "freshness_level", "UNKNOWN")
     insight_date = getattr(youtube_result.pydantic, "insight_date", "N/A")
 
-    # ???????70%??"?꿔꺂????쭍??????띻샴???꿔꺂??????熬곣뫖利든뜏類ｋ렰??????????熬곣뫖利???
-    # MARKET/MINDSET/RISK/PSYCHOLOGY????잙갭큔?됥깾爾??????ㅻ샑筌???????????????????????熬곣뫖利????? ????⑤９??
+    # 구루 점수 70%는 정성적 인사이트를 반영하기 위한 가중치다.
+    # MARKET/MINDSET/RISK/PSYCHOLOGY 기반 인사이트가 없으면 시스템 점수만 사용한다.
     if (
         content_type == "SPECIFIC"
         and freshness_level in ["FRESH", "RECENT"]
@@ -679,8 +679,8 @@ def parse_youtube_result(youtube_result, company: str, state: ReportState | None
         guru_weight = 0.0
 
     logger.debug(
-        f"???[{company}] ????ｋ뽫뜏??????노듋嶺??嚥싲갭횧?誘㏐괌?????? {content_type} "
-        f"| ????◈??? {freshness_level} | ???뚯????? {insight_date} "
+        f"[{company}] 유튜브 인사이트 적용: {content_type} "
+        f"| 신선도: {freshness_level} | 기준일: {insight_date} "
         f"| Guru Score: {guru_score} | Guru Weight: {guru_weight:.0%}"
     )
 
@@ -705,12 +705,12 @@ def decide_final_opinion(
 
     total_score = fundamental_score + macro_score + sentiment
 
-    # total_score ?筌?????
+    # total_score 범위
     # fundamental_score: -3 ~ +3
     # macro_score: -3 ~ +3
     # sentiment: -1 ~ +1
-    # ???믩쑏?誘⑹몡?: -7 ~ +7
-    # 50?????嚥싳쉶瑗??꾧틚?????Β??????? 1???????7??????????
+    # 총합: -7 ~ +7
+    # 50점을 중립으로 두고, 1점당 약 7점씩 이동
     system_score = max(0, min(100, 50 + (total_score * 7)))
 
     if guru_weight > 0:
@@ -739,12 +739,12 @@ def decide_final_opinion(
         guru_sentiment_label = "Neutral"
 
     logger.debug(
-        f"???[??嶺?筌??????? {company} | ??嶺?筌??????? {system_score}??"
-        f"(????{fundamental_score} + ?꿔꺂????關臾쇘춯癒?돵??{macro_score} + ????ㅿ폍筌?{sentiment})"
+        f"[시스템 채점] {company} | 시스템 점수: {system_score}점 "
+        f"(재무 {fundamental_score} + 매크로 {macro_score} + 뉴스 {sentiment})"
     )
     logger.info(
-        f"???[?꿔꺂????쭍?瑜귣젺?????? {company} | ????띻샷??? {final_weighted_score:.1f}??"
-        f"(??嶺?筌??{system_weight:.0%} + ???????{guru_weight:.0%}[{guru_sentiment_label}]) ??{final_opinion}"
+        f"[최종 판정] {company} | 종합 {final_weighted_score:.1f}점 "
+        f"(시스템 {system_weight:.0%} + 구루 {guru_weight:.0%}[{guru_sentiment_label}]) → {final_opinion}"
     )
 
     return final_opinion
@@ -835,7 +835,7 @@ def run_final_analysis_step(
         cache=False,
     )
 
-    logger.debug(f"?傭?[{company}] ?꿔꺂????쭍?瑜귣젺???잙갭큔?됥깾爾?????꾩룆???嚥?..")
+    logger.debug(f"[{company}] 최종 리포트 생성 중...")
     return safe_kickoff(analysis_crew, f"{company} Analysis Crew")
 
 
@@ -862,23 +862,24 @@ def render_markdown_report(
     defense_price_text = format_price(defense_price, price_unit)
 
     if final_opinion in ["Strong Buy", "Buy"]:
-        buy_comment = "buy with appropriate position sizing"
+        buy_comment = "적정 비중 매수 권고"
     elif final_opinion == "Hold":
-        buy_comment = "???援온?????????⑤슢???? ???뚯???"
+        buy_comment = "관망 또는 보유 기준"
     else:
-        buy_comment = "new buy not recommended"
+        buy_comment = "신규 매수 비권장"
 
-    md_report = f"""# ???{company} ??癲?????????썹땟????잙갭큔?됥깾爾??
-| ???????| ??醫딆쓧????癲ル슢???ъ쒜?| ?????????ъ맓 |
+    md_report = f"""# 📈 {company} 심층 투자 전략 리포트
+
+| 구분 | 가격 정보 | 투자 의견 |
 | :--- | :--- | :--- |
-| **????썹땟??됰챶夷???쎛** | **{current_price_text}** | **{report_data.investment_opinion}** |
-| **???????꿔꺂?????釉랃폎??** | **{target_buy_price_text}** | {buy_comment} |
-| **?????????熬곣뫖?삥납??關?????????* | **{defense_price_text}** | ???곗뒩泳???꿔꺂?????????|
+| **현재가** | **{current_price_text}** | **{report_data.investment_opinion}** |
+| **권장 매수가** | **{target_buy_price_text}** | {buy_comment} |
+| **하락 시 방어선/저항선** | **{defense_price_text}** | 분할 매수/대응 |
 
-### ?????嶺뚮슣堉?쭕?????ル뒆???잙갭큔?딆뼍吏????嚥??嚥▲굧????덈춣?
+### 💡 수석 애널리스트 한 줄 결론
 > **{report_data.one_line_conclusion}**
 
-### ???3嚥????됰Ŋ???(Executive Summary)
+### 🎯 3줄 요약 (Executive Summary)
 """
 
     for line in report_data.executive_summary:
@@ -887,24 +888,25 @@ def render_markdown_report(
     md_report += f"""
 ---
 
-## 1. ????꿔꺂????關臾쇘춯癒?돵??????嶺뚮??ｆ쾮??????ъ졒
+## 1. 🌍 매크로 및 시장 환경
 {report_data.macro_analysis}
 
-## 2. ????????됰Ŧ?????????????곗뒩泳??
+## 2. 📊 펀더멘털 및 퀀트 분석
 {report_data.fundamental_analysis}
 
-## 3. ???????猷몄쑛????⑤벡由??꿔꺂??袁ㅻ븶?癲?? (?꿔꺂????쭍??????ㅿ폍筌?
+## 3. 📰 비즈니스 모멘텀 (최신 뉴스)
 {report_data.momentum_analysis}
 
-## 4. ?????????????嶺?筌?(???녿뮝?????????諛멸퐪 ?癲ル슢??????ш끽維??
+## 4. 📺 구루의 시선 (주알홍쌤 인사이트)
 {report_data.guru_analysis}
 
-## 5. ?????嶺뚮슣堉?쭕?????ル뒆???잙갭큔?딆뼍吏??????띻샷??? ?嚥▲굧????덈춣?
+## 5. 💡 수석 애널리스트 종합 결론
 {report_data.final_conclusion}
 
 ---
 
-## ??????繹먮냱諭??꿔꺂?볟젆怨곷븶???????????"""
+## 📎 실적 차트 데이터
+"""
 
     md_report += "```json\n"
     md_report += chart_json
@@ -924,11 +926,10 @@ def render_markdown_report(
 
     return md_report
 
-
 def build_run_summary_output(macro_json, all_reports):
     now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    summary_output = f"> **?꿔꺂????쭍???????욍걛???ш끽維????濚밸Ŧ援앾쭛?** {now_text}\n\n"
+    summary_output = f"> **최근 업데이트 일시:** {now_text}\n\n"
     summary_output += "<!-- MACRO_DATA\n"
     summary_output += macro_json
     summary_output += "\n-->\n\n"
@@ -940,21 +941,20 @@ def build_run_summary_output(macro_json, all_reports):
             summary_cards.append(extract_report_summary(item.get("report", "")))
         else:
             summary_cards.append(
-                f"# ???{item.get('company', 'N/A')} ??癲?????????썹땟????잙갭큔?됥깾爾??n\n"
-                f"> {item.get('report', '???곗뒩泳???????곌숯')}"
+                f"# 📈 {item.get('company', 'N/A')} 심층 투자 전략 리포트\n\n"
+                f"> {item.get('report', '분석 실패')}"
             )
 
     summary_output += "\n\n---\n\n".join(summary_cards)
 
     return summary_output
 
-
 def build_output_report_item(state: ReportState):
     final_report = state.get("final_report") or {}
     report = final_report.get("markdown") or final_report.get("raw")
 
     if report is None:
-        report = "\n".join(state.get("errors", [])) or "???곗뒩泳???????곌숯"
+        report = "\n".join(state.get("errors", [])) or "분석 실패"
 
     return {
         "ticker": state.get("ticker"),
@@ -993,7 +993,7 @@ def build_failed_state(target, error):
     state["summary_saved"] = False
     state.setdefault("errors", []).append(str(error))
     state["final_report"] = {
-        "raw": f"??[????띻샴?????곗뒩泳???????곌숯] {company_name} ({ticker}) ???繹먮굝???熬곣뫖利든뜏類ｋ렱?? {error}",
+        "raw": f"[종목 분석 실패] {company_name} ({ticker}) 예외 발생: {error}",
     }
     state["output_report"] = build_output_report_item(state)
     return state
@@ -1012,7 +1012,7 @@ def run_single_report_pipeline(
         state["macro_data"] = macro_context["macro_data"]
 
     try:
-        logger.info(f"??????곗뒩泳????嶺뚮??ｆ뤃? {company_name} ({ticker})")
+        logger.info(f"분석 시작: {company_name} ({ticker})")
 
         acc_data, failed_item = run_accounting_step(
             agents["accounting"],
@@ -1026,7 +1026,7 @@ def run_single_report_pipeline(
             state["output_report"] = failed_item
             return finalize_state(state)
 
-        logger.debug(f"???[{company_name}] ??잙갭큔??影?뽯눚??????????????볥궚??嚥?..")
+        logger.debug(f"[{company_name}] 리서치 데이터 수집 중...")
         research_result = run_research_step(
             agents["research"],
             tasks["research"],
@@ -1034,7 +1034,7 @@ def run_single_report_pipeline(
             state=state,
         )
 
-        logger.debug(f"???[{company_name}] ????ｋ뽫뜏???????????????볥궚??嚥?..")
+        logger.debug(f"[{company_name}] 유튜브 데이터 수집 중...")
         youtube_result = run_youtube_rag_step(
             agents["youtube"],
             tasks["youtube"],
@@ -1101,10 +1101,10 @@ def run_single_report_pipeline(
                 "status": "SUCCESS",
                 "report": md_report,
             }
-            logger.info(f"??[{company_name}] report generated")
+            logger.info(f"[{company_name}] 리포트 생성 완료")
         else:
-            fallback_report = f"???[{company_name}]\n{final_result.raw}"
-            append_report_error(state, "Analysis ????????꾣뤃罐??????源?????????????곌숯")
+            fallback_report = f"[{company_name}]\n{final_result.raw}"
+            append_report_error(state, "Analysis 에이전트 구조화 파싱 실패")
             state["status"] = "failed"
             state["final_report"] = {
                 "raw": final_result.raw,
@@ -1116,10 +1116,10 @@ def run_single_report_pipeline(
                 "status": "FAILED",
                 "report": fallback_report,
             }
-            logger.error(f"??[{company_name}] Analysis ????????꾣뤃罐??????源?????????????곌숯")
+            logger.error(f"[{company_name}] Analysis 에이전트 구조화 파싱 실패")
 
     except Exception as e:
-        msg = f"??[????띻샴?????곗뒩泳???????곌숯] {company_name} ({ticker}) ???繹먮굝???熬곣뫖利든뜏類ｋ렱?? {e}"
+        msg = f"[종목 분석 실패] {company_name} ({ticker}) 예외 발생: {e}"
         logger.exception(msg)
         append_report_error(state, msg)
         state["status"] = "failed"
@@ -1150,7 +1150,7 @@ def run_multiple_report_pipeline(targets, agents, tasks, macro_context):
                 macro_context,
             )
         except Exception as e:
-            logger.exception(f"????띻샴??????????썹땟怨꼲????⑤슢?뽫뵓嫄붋???????곌숯: {company_name} ({ticker})")
+            logger.exception(f"종목별 리포트 생성 중 예외 발생: {company_name} ({ticker})")
             state = build_failed_state((ticker, company_name), e)
 
         results.append(state)
@@ -1162,7 +1162,7 @@ def run_financial_crew(stock_pool=None):
     stock_pool = normalize_stock_pool(stock_pool)
     openai_api_key = require_env("OPENAI_API_KEY")
 
-    # ????ㅿ폍筌???잙갭큔??影?뽯눚???곌퐷???????
+    # 뉴스 리서치에서 사용
     require_env("SERPER_API_KEY")
 
     fast_llm, fact_llm, smart_llm = create_llms(openai_api_key)
@@ -1171,12 +1171,12 @@ def run_financial_crew(stock_pool=None):
     tasks = crew_components["tasks"]
 
     # ---------------------------------------------------------
-    # 0. ????ｋ뽫뜏??DB ?????욍걛???ш끽維??
+    # 0. 유튜브 DB 업데이트
     # ---------------------------------------------------------
     update_youtube_vector_db()
 
     # ---------------------------------------------------------
-    # 1. ?꿔꺂????關臾쇘춯癒?돵?????곗뒩泳??
+    # 1. 매크로 분석
     # ---------------------------------------------------------
     macro_state: ReportState = {
         "status": "running",

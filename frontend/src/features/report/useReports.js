@@ -46,7 +46,7 @@ export function useReports(refreshKey = 0) {
 
         setIsLoadingList(false);
       });
-  }, []);
+  }, [refreshKey]);
 
   const fetchReportDetail = useCallback((report) => {
     if (!report?.date || !report?.filename) return;

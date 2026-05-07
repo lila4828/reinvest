@@ -5,7 +5,7 @@ import './MainBody.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const FAVORITES_STORAGE_KEY = 'ai-reinvest-main-report-favorites';
-const OPINION_FILTERS = ['Buy', 'Hold', 'Sell', '분석 중단'];
+const OPINION_FILTERS = ['Strong Buy', 'Buy', 'Hold', 'Sell', '분석 중단'];
 
 function parseReportMetaFromFilename(filename) {
   if (!filename || filename === 'summary.md' || !filename.endsWith('.md')) {
@@ -27,6 +27,25 @@ function parseReportMetaFromFilename(filename) {
 
 function getReportSortValue(report) {
   return `${report.date || ''}/${report.filename || ''}`;
+}
+
+function formatReportBaseTime(report) {
+  const value = report?.modifiedAt || report?.modified_at || report?.date;
+
+  if (!value) return '기준 날짜 없음';
+
+  const normalizedValue = String(value).replace('T', ' ');
+
+  return `기준 ${normalizedValue.slice(0, 16)}`;
+}
+
+function getTodayDateText() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function parseReportsFromMarkdown(content) {
@@ -86,7 +105,12 @@ function parseSingleReportFromMarkdown(content, fallbackCompanyName) {
   };
 }
 
-function MainBody({ refreshKey = 0, sideContent = null }) {
+function MainBody({
+  refreshKey = 0,
+  sideContent = null,
+  onStartReportJob,
+  isReportWorking = false,
+}) {
   const [reports, setReports] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -187,6 +211,7 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
               ...parsedReport,
               ticker: report.ticker,
               date: report.date,
+              modifiedAt: detailData.modified_at || report.modified_at || null,
               filename: report.filename,
             };
           }),
@@ -259,6 +284,8 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
 
   const selectedReport = reports[selectedIndex];
   const selectedReportKey = selectedReport?.companyName || '';
+  const todayDateText = getTodayDateText();
+  const hasTodaySelectedReport = selectedReport?.date === todayDateText;
   const normalizedKeyword = searchKeyword.trim().toLowerCase();
   const favoriteSet = new Set(favoriteReports);
   const filteredReports = reports
@@ -278,8 +305,10 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
     });
 
   const getOpinionClassName = (opinion) => {
+    if (opinion.includes('Strong Buy')) return 'status-strong-buy';
     if (opinion.includes('Buy')) return 'status-buy';
     if (opinion.includes('Sell')) return 'status-sell';
+    if (opinion.includes('분석 중단')) return 'status-stop';
     return 'status-hold';
   };
 
@@ -303,6 +332,15 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
     });
   };
 
+  const handleCreateSelectedTodayReport = async () => {
+    if (!selectedReport || typeof onStartReportJob !== 'function') return;
+
+    await onStartReportJob([{
+      ticker: selectedReport.ticker,
+      company: selectedReport.companyName,
+    }]);
+  };
+
   return (
     <>
       <div className="main-operations-grid">
@@ -317,7 +355,7 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
             <div>
               <h4 className="fw-bold mb-1">🏭 타겟 종목 스캔 현황</h4>
               <p className="text-muted mb-0 small">
-                총 {reports.length}개 종목 중 {selectedReport.companyName} 리포트를 보고 있습니다.
+                {selectedReport.companyName} 리포트를 보고 있습니다.
               </p>
             </div>
           </div>
@@ -388,8 +426,10 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
                       onClick={() => setSelectedIndex(report.sourceIndex)}
                     >
                       <span className="report-selector-name">{report.companyName}</span>
-                      <span className={`report-selector-opinion ${getOpinionClassName(report.opinion)}`}>
-                        {report.opinion}
+                      <span className="report-selector-meta">
+                        <span className={`report-selector-opinion ${getOpinionClassName(report.opinion)}`}>
+                          {report.opinion}
+                        </span>
                       </span>
                     </button>
                   </div>
@@ -407,6 +447,29 @@ function MainBody({ refreshKey = 0, sideContent = null }) {
       </div>
 
       <div className="report-markdown-container markdown-content p-4 bg-light rounded border">
+        <div className="report-detail-context">
+          <div className="report-detail-heading">
+            <span className="report-detail-title">{selectedReport.companyName}</span>
+            <span className="report-detail-date">{formatReportBaseTime(selectedReport)}</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary report-today-create-button"
+            onClick={handleCreateSelectedTodayReport}
+            disabled={
+              isReportWorking ||
+              hasTodaySelectedReport ||
+              typeof onStartReportJob !== 'function'
+            }
+            title={
+              hasTodaySelectedReport
+                ? '오늘 기준 리포트가 이미 있습니다.'
+                : `${selectedReport.companyName} 오늘 기준 리포트 생성`
+            }
+          >
+            {hasTodaySelectedReport ? '오늘 리포트 있음' : '오늘 기준 생성'}
+          </button>
+        </div>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {selectedReport?.mdContent || ''}
         </ReactMarkdown>

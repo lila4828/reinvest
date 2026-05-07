@@ -213,6 +213,38 @@ def normalize_ticker_for_analysis(ticker: str):
     return ticker
 
 
+def sanitize_report_filename_part(value: str):
+    invalid_chars = '<>:"/\\|?*'
+    text = str(value or "")
+
+    for ch in invalid_chars:
+        text = text.replace(ch, "_")
+
+    return text.strip()
+
+
+def get_report_file_path(result_date: str, company: str, ticker: str):
+    filename = (
+        f"{sanitize_report_filename_part(company)}_"
+        f"{sanitize_report_filename_part(ticker)}.md"
+    )
+    return os.path.join(RESULT_DIR_ABSPATH, result_date, filename)
+
+
+def find_existing_daily_reports(stock_pool: list[tuple[str, str]], result_date: str):
+    existing_reports = []
+
+    for ticker, company in stock_pool:
+        if os.path.exists(get_report_file_path(result_date, company, ticker)):
+            existing_reports.append({
+                "ticker": ticker,
+                "company": company,
+                "date": result_date,
+            })
+
+    return existing_reports
+
+
 def run_report_background(job_id: str, stock_pool: list[tuple[str, str]]):
     api_logger.info(f"리포트 작업 시작: job_id={job_id}, stocks={stock_pool}")
 
@@ -486,6 +518,27 @@ def run_report(
 
         stock_pool.append((ticker, company))
 
+    today_text = datetime.now().strftime("%Y-%m-%d")
+    existing_reports = find_existing_daily_reports(stock_pool, today_text)
+
+    if existing_reports:
+        existing_names = ", ".join(
+            f"{item['company']}({item['ticker']})"
+            for item in existing_reports
+        )
+        api_logger.warning(
+            f"일일 리포트 중복 생성 차단: username={session['username']}, "
+            f"date={today_text}, stocks={existing_names}"
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"{today_text} 기준 리포트가 이미 있습니다: {existing_names}",
+        )
+
+    for stock in payload.stocks:
+        ticker = normalize_ticker_for_analysis(stock.ticker)
+        company = stock.company.strip()
+
         was_saved = save_stock_to_cache({
             "ticker": ticker,
             "company": company,
@@ -577,6 +630,10 @@ def get_report_list(session=Depends(get_current_session)):
             if not filename.endswith(".md"):
                 continue
 
+            file_path = os.path.join(date_path, filename)
+            modified_at = datetime.fromtimestamp(
+                os.path.getmtime(file_path)
+            ).isoformat(timespec="minutes")
             display_name = "종합 분석 리포트" if filename == "summary.md" else filename.replace(".md", "")
 
             reports.append(
@@ -586,6 +643,7 @@ def get_report_list(session=Depends(get_current_session)):
                     "path": f"{date_dir}/{filename}",
                     "display_name": display_name,
                     "is_summary": filename == "summary.md",
+                    "modified_at": modified_at,
                 }
             )
 
@@ -624,6 +682,9 @@ def get_report_detail(date: str, filename: str, session=Depends(get_current_sess
             return {
                 "date": safe_date,
                 "filename": safe_filename,
+                "modified_at": datetime.fromtimestamp(
+                    os.path.getmtime(abs_file_path)
+                ).isoformat(timespec="minutes"),
                 "content": f.read(),
             }
     except Exception as e:

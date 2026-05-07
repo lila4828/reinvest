@@ -253,7 +253,7 @@ function MainTop({ refreshKey = 0 }) {
         🌍 AI 분석 거시경제 현황
         {macroData.updateTime && (
           <span className="main-top-updated text-muted ms-2 fw-normal mb-1">
-            ({macroData.updateTime} 기준)
+            (기준 {macroData.updateTime})
           </span>
         )}
       </h5>

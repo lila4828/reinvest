@@ -26,9 +26,6 @@ function cleanReportContent(content) {
 function isKoreanReport(content) {
   if (!content || typeof content !== 'string') return false;
 
-  // 가격표의 현재가 기준으로 판단
-  // 한국 주식: | **현재가** | **80,000원** |
-  // 미국 주식: | **현재가** | **$381.63** |
   const currentPriceMatch = content.match(
     /\|\s*\*\*현재가\*\*\s*\|\s*\*\*([^*]+)\*\*\s*\|/
   );
@@ -45,7 +42,6 @@ function isKoreanReport(content) {
     }
   }
 
-  // fallback
   return content.includes('.KS') || content.includes('.KQ');
 }
 
@@ -69,24 +65,41 @@ function normalizeChartValue(value, isKoreanStock) {
   return numberValue / 1000000000;
 }
 
-function formatChartValue(value, isKoreanStock) {
-  const numberValue = Math.round(Number(value || 0));
+function formatKoreanChartValue(value, includeWon = false) {
+  const numberValue = Number(value || 0);
+  const absValue = Math.abs(numberValue);
 
-  if (isKoreanStock) {
-    return `${numberValue}조 원`;
+  if (absValue >= 1) {
+    return `${Math.round(numberValue)}조${includeWon ? ' 원' : ''}`;
   }
 
-  return `${numberValue}B`;
+  const eokValue = Math.round(numberValue * 10000);
+
+  if (eokValue === 0 && numberValue !== 0) {
+    return `${numberValue < 0 ? '-' : ''}1억${includeWon ? ' 원' : ''}`;
+  }
+
+  return `${eokValue.toLocaleString()}억${includeWon ? ' 원' : ''}`;
+}
+
+function formatChartValue(value, isKoreanStock) {
+  const numberValue = Number(value || 0);
+
+  if (isKoreanStock) {
+    return formatKoreanChartValue(numberValue, true);
+  }
+
+  return `${Math.round(numberValue)}B`;
 }
 
 function formatBarLabelValue(value, isKoreanStock) {
-  const numberValue = Math.round(Number(value || 0));
+  const numberValue = Number(value || 0);
 
   if (isKoreanStock) {
-    return `${numberValue}조`;
+    return formatKoreanChartValue(numberValue, false);
   }
 
-  return `${numberValue}B`;
+  return `${Math.round(numberValue)}B`;
 }
 
 function getYAxisDomain(chartData) {
@@ -102,19 +115,22 @@ function getYAxisDomain(chartData) {
 
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
+  const maxAbsValue = Math.max(Math.abs(minValue), Math.abs(maxValue), 1);
 
-  const topPadding = Math.max(Math.abs(maxValue) * 0.18, 5);
+  const topPadding = Math.max(Math.abs(maxValue) * 0.22, maxAbsValue * 0.08, 0.25);
 
-  // 음수 라벨이 잘리지 않도록 아래쪽 여백을 더 크게 확보
   const bottomPadding =
     minValue < 0
-      ? Math.max(Math.abs(minValue) * 1.2, Math.abs(maxValue) * 0.08, 8)
+      ? Math.max(Math.abs(minValue) * 0.45, maxAbsValue * 0.08, 0.25)
       : 0;
 
-  const yMin = minValue < 0 ? Math.floor(minValue - bottomPadding) : 0;
-  const yMax = Math.ceil(maxValue + topPadding);
+  const yMin = minValue < 0 ? minValue - bottomPadding : 0;
+  const yMax = maxValue + topPadding;
 
-  return [yMin, yMax];
+  return [
+    Number(yMin.toFixed(2)),
+    Number(yMax.toFixed(2)),
+  ];
 }
 
 function extractChartSection(content) {
@@ -192,20 +208,42 @@ function CustomTooltip({ active, payload, label, isKoreanStock }) {
 
 function renderBarLabel(isKoreanStock) {
   return function BarLabel(props) {
-    const { x, y, width, value } = props;
+    const { x, y, width, height, value } = props;
 
-    const roundedValue = Math.round(Number(value || 0));
-    const label = formatBarLabelValue(roundedValue, isKoreanStock);
-    const isNegative = roundedValue < 0;
+    const numberValue = Number(value || 0);
+
+    if (numberValue === 0) {
+      return null;
+    }
+
+    const label = formatBarLabelValue(numberValue, isKoreanStock);
+    const isNegative = numberValue < 0;
+
+    const numberX = Number(x || 0);
+    const numberY = Number(y || 0);
+    const numberWidth = Number(width || 0);
+    const numberHeight = Number(height || 0);
+
+    const labelX = numberX + numberWidth / 2;
+
+    /*
+      핵심:
+      - 양수 막대: y가 막대 상단
+      - 음수 막대: y + height 쪽이 0선 기준으로 잡히는 케이스가 있어서
+        두 좌표 중 더 위쪽 값을 기준으로 라벨을 배치한다.
+    */
+    const barTopY = Math.min(numberY, numberY + numberHeight);
+    const labelY = barTopY - 8;
 
     return (
       <text
-        x={x + width / 2}
-        y={isNegative ? y - 20 : y - 8}
+        x={labelX}
+        y={labelY}
         textAnchor="middle"
         fontSize={11}
         fontWeight={700}
-        fill={isNegative ? '#dc2626' : '#374151'}
+        fill={isNegative ? '#dc2626' : '#111827'}
+        pointerEvents="none"
       >
         {label}
       </text>
@@ -213,7 +251,7 @@ function renderBarLabel(isKoreanStock) {
   };
 }
 
-function ReportDetail({ content, isLoading, onBack }) {
+function ReportDetail({ content, isLoading, onBack, showBackButton = true }) {
   const { cleanedContent, chartData, isKoreanStock } = useMemo(
     () => extractChartSection(content),
     [content]
@@ -225,9 +263,11 @@ function ReportDetail({ content, isLoading, onBack }) {
 
   return (
     <div>
-      <button className="btn btn-outline-secondary mb-4" onClick={onBack}>
-        &larr; 목록으로 돌아가기
-      </button>
+      {showBackButton && (
+        <button className="btn btn-outline-secondary mb-4" onClick={onBack}>
+          &larr; 목록으로 돌아가기
+        </button>
+      )}
 
       {!content ? (
         <div className="alert alert-warning">
@@ -247,20 +287,20 @@ function ReportDetail({ content, isLoading, onBack }) {
                 <h4 className="report-detail-chart-title">📊 실적 차트</h4>
 
                 <p className="report-detail-chart-unit">
-                  단위: {isKoreanStock ? '조 원(반올림)' : 'Billion USD (rounded)'}
+                  단위: {isKoreanStock ? '조 원 / 1조 미만은 억 원 표기' : 'Billion USD (rounded)'}
                 </p>
 
                 <div className="report-chart-wrapper">
                   <ResponsiveContainer>
                     <BarChart
                       data={chartData}
-                      margin={{ top: 36, right: 24, left: 24, bottom: 12 }}
+                      margin={{ top: 46, right: 24, left: 24, bottom: 24 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="period" />
                       <YAxis hide domain={getYAxisDomain(chartData)} />
                       <ReferenceLine y={0} stroke="#9ca3af" strokeWidth={1} />
-                      <Tooltip content={ <CustomTooltip isKoreanStock={isKoreanStock} /> } />
+                      <Tooltip content={<CustomTooltip isKoreanStock={isKoreanStock} />} />
                       <Legend />
                       <Bar
                         dataKey="revenue"
@@ -268,7 +308,10 @@ function ReportDetail({ content, isLoading, onBack }) {
                         fill="var(--chart-revenue)"
                         radius={[6, 6, 0, 0]}
                       >
-                        <LabelList content={renderBarLabel(isKoreanStock)} />
+                        <LabelList
+                          position="top"
+                          content={renderBarLabel(isKoreanStock)}
+                        />
                       </Bar>
                       <Bar
                         dataKey="net_profit"
@@ -276,7 +319,10 @@ function ReportDetail({ content, isLoading, onBack }) {
                         fill="var(--chart-net-profit)"
                         radius={[6, 6, 0, 0]}
                       >
-                        <LabelList content={renderBarLabel(isKoreanStock)} />
+                        <LabelList 
+                          position="top"
+                          content={renderBarLabel(isKoreanStock)}
+                        />
                       </Bar>
                       <Bar
                         dataKey="fcf"
@@ -284,7 +330,10 @@ function ReportDetail({ content, isLoading, onBack }) {
                         fill="var(--chart-fcf)"
                         radius={[6, 6, 0, 0]}
                       >
-                        <LabelList content={renderBarLabel(isKoreanStock)} />
+                        <LabelList 
+                          position="top"
+                          content={renderBarLabel(isKoreanStock)}
+                        />
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>

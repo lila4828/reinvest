@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import './ReportBody.css';
 import ReportList from './ReportList';
 import ReportDetail from './ReportDetail';
@@ -16,9 +16,36 @@ function ReportBody({ refreshKey = 0 }) {
     handleBack
   } = useReports(refreshKey);
 
+  useEffect(() => {
+    if (!selectedReport) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth',
+      });
+    });
+  }, [selectedReport?.date, selectedReport?.filename]);
+
   return (
-    <div className="container mt-4 report-body-panel">
-      <h2 className="fw-bold">{selectedReport ? '투자 분석 리포트 상세' : '투자 분석 리포트 목록'}</h2>
+    <div className="container-fluid report-workspace mt-4">
+      <div className="report-workspace-title">
+        <div>
+          <h2 className="fw-bold mb-1">투자 분석 리포트</h2>
+        </div>
+
+        {selectedReport && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary report-clear-selection"
+            onClick={handleBack}
+          >
+            선택 해제
+          </button>
+        )}
+      </div>
       <hr />
 
       {errorMsg && (
@@ -27,19 +54,34 @@ function ReportBody({ refreshKey = 0 }) {
         </div>
       )}
 
-      {selectedReport ? (
-        <ReportDetail
-          content={reportContent}
-          isLoading={isLoadingDetail}
-          onBack={handleBack}
-        />
-      ) : (
-        <ReportList
-          reports={reports}
-          isLoading={isLoadingList}
-          onReportClick={handleReportClick}
-        />
-      )}
+      <div className={`report-workspace-grid ${selectedReport ? 'has-selection' : ''}`}>
+        <aside className="report-workspace-list">
+          <ReportList
+            reports={reports}
+            isLoading={isLoadingList}
+            onReportClick={handleReportClick}
+            selectedReport={selectedReport}
+          />
+        </aside>
+
+        <section className="report-workspace-detail">
+          {selectedReport ? (
+            <ReportDetail
+              content={reportContent}
+              isLoading={isLoadingDetail}
+              onBack={handleBack}
+              showBackButton={false}
+            />
+          ) : (
+            <div className="report-empty-detail border rounded shadow-sm">
+              <strong>리포트를 선택해 주세요.</strong>
+              <p className="text-muted mb-0">
+                왼쪽 목록에서 종목을 선택하면 이 영역에 상세 리포트와 실적 차트가 표시됩니다.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

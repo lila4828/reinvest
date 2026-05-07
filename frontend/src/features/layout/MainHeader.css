@@ -1,8 +1,71 @@
 .logo-link {
+  flex: 0 0 auto;
+  white-space: nowrap;
   transition: all 0.2s ease-in-out;
 }
 
 .logo-link:hover {
-  transform: scale(1.03); /* 마우스 올렸을 때 살짝 커지는 효과 */
-  opacity: 0.8; /* 색상이 살짝 어두워지는 효과 */
+  transform: scale(1.03);
+  opacity: 0.8;
+}
+
+.main-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  min-width: 0;
+}
+
+.main-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+}
+
+.main-header-user {
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.main-header-actions .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .main-header-inner {
+    gap: 18px;
+  }
+
+  .logo-link {
+    font-size: 1.15rem !important;
+  }
+
+  .main-header-actions {
+    gap: 10px;
+  }
+
+  .main-header-actions .btn {
+    padding-inline: 0.85rem;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .main-header-inner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .main-header-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .main-header-actions .btn {
+    flex: 1 1 180px;
+  }
 }

@@ -16,6 +16,8 @@ function Main({
 
       <MainBody
         refreshKey={reportRefreshKey}
+        onStartReportJob={onStartReportJob}
+        isReportWorking={isReportWorking}
         sideContent={
           <ReportGenerator
             onStartReportJob={onStartReportJob}

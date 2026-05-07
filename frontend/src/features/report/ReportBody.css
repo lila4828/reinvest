@@ -14,6 +14,13 @@
   color: #111;
 }
 
+.markdown-content > :first-child,
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child {
+  margin-top: 0;
+}
+
 .markdown-content h2 {
   padding-bottom: 0.3em;
   border-bottom: 2px solid #e9ecef;
@@ -49,4 +56,226 @@
 
 .markdown-content strong {
   color: #0d6efd; /* 강조 텍스트를 브랜드 컬러(파란색)로 포인트 */
+}
+
+.report-workspace {
+  max-width: 1440px;
+}
+
+.report-workspace-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.report-clear-selection {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.report-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.82fr) minmax(0, 1.45fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.report-workspace-list {
+  position: sticky;
+  top: 86px;
+  min-width: 0;
+}
+
+.report-workspace-detail {
+  min-width: 0;
+}
+
+.report-empty-detail {
+  display: grid;
+  min-height: 360px;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 36px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.report-list-shell {
+  min-width: 0;
+}
+
+.report-date-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  scrollbar-gutter: stable;
+}
+
+.report-date-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #495057;
+  font-size: 0.88rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.report-date-chip span {
+  min-width: 22px;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #f1f3f5;
+  color: #6c757d;
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+.report-date-chip.active {
+  border-color: #0d6efd;
+  background: #f1f7ff;
+  color: #0d6efd;
+}
+
+.report-date-chip.active span {
+  background: #0d6efd;
+  color: #ffffff;
+}
+
+.report-list-panel {
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.report-list-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8fbff;
+}
+
+.report-list-scroll {
+  max-height: min(58vh, 620px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.report-list-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid #edf1f6;
+  background: #ffffff;
+  color: #212529;
+  text-align: left;
+}
+
+.report-list-item:hover {
+  background: #f6faff;
+}
+
+.report-list-item.active {
+  background: #f1f7ff;
+  box-shadow: inset 4px 0 0 #0d6efd;
+}
+
+.report-list-item:last-child {
+  border-bottom: 0;
+}
+
+.report-list-item-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.report-list-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-list-date {
+  color: #6c757d;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.report-list-action {
+  flex: 0 0 auto;
+  color: #0d6efd;
+  font-size: 0.86rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+  .report-workspace {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .report-workspace-title {
+    display: block;
+  }
+
+  .report-clear-selection {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .report-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-workspace-list {
+    position: static;
+  }
+
+  .report-list-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .report-list-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .report-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-workspace-grid.has-selection .report-workspace-detail {
+    order: -1;
+  }
+
+  .report-workspace-list {
+    position: static;
+  }
+
+  .report-list-scroll {
+    max-height: 440px;
+  }
 }

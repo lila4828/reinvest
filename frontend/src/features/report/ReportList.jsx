@@ -40,10 +40,9 @@ function groupReportsByDate(reports) {
   }, {});
 }
 
-function ReportList({ reports, isLoading, onReportClick }) {
+function ReportList({ reports, isLoading, onReportClick, selectedReport = null }) {
   const [stockKeyword, setStockKeyword] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
-  const [openDates, setOpenDates] = useState({});
 
   const filteredReports = useMemo(() => {
     const normalizedStockKeyword = stockKeyword.trim().toLowerCase();
@@ -61,38 +60,36 @@ function ReportList({ reports, isLoading, onReportClick }) {
     });
   }, [reports, stockKeyword, selectedDate]);
 
-  const groupedReports = useMemo(() => {
-    const grouped = groupReportsByDate(filteredReports);
+  const dateGroups = useMemo(() => {
+    const grouped = groupReportsByDate(reports);
 
     return Object.entries(grouped)
       .sort(([dateA], [dateB]) => String(dateB).localeCompare(String(dateA)))
       .map(([date, dateReports]) => ({
         date,
-        reports: [...dateReports].sort((a, b) =>
-          getReportTitle(a).localeCompare(getReportTitle(b), 'ko')
-        ),
+        count: dateReports.length,
       }));
+  }, [reports]);
+
+  const sortedReports = useMemo(() => {
+    return [...filteredReports].sort((a, b) => {
+      const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+
+      if (dateCompare !== 0) {
+        return dateCompare;
+      }
+
+      return getReportTitle(a).localeCompare(getReportTitle(b), 'ko');
+    });
   }, [filteredReports]);
 
   const hasActiveFilter =
     stockKeyword.trim() !== '' ||
     selectedDate !== '';
 
-  const toggleDate = (date) => {
-    setOpenDates((prev) => {
-      const currentValue = prev[date];
-
-      return {
-        ...prev,
-        [date]: currentValue === undefined ? false : !currentValue,
-      };
-    });
-  };
-
   const resetFilters = () => {
     setStockKeyword('');
     setSelectedDate('');
-    setOpenDates({});
   };
 
   if (isLoading) {
@@ -111,8 +108,8 @@ function ReportList({ reports, isLoading, onReportClick }) {
   }
 
   return (
-    <div>
-      <div className="card border-0 shadow-sm mb-4">
+    <div className="report-list-shell">
+      <div className="card border-0 shadow-sm mb-3">
         <div className="card-body">
           <div className="row g-3 align-items-end">
             <div className="col-md-7">
@@ -154,62 +151,70 @@ function ReportList({ reports, isLoading, onReportClick }) {
         </div>
       </div>
 
-      {groupedReports.length === 0 ? (
+      <div className="report-date-strip mb-3">
+        <button
+          type="button"
+          className={`report-date-chip ${selectedDate === '' ? 'active' : ''}`}
+          onClick={() => setSelectedDate('')}
+        >
+          전체
+          <span>{reports.length}</span>
+        </button>
+
+        {dateGroups.map((group) => (
+          <button
+            type="button"
+            className={`report-date-chip ${selectedDate === group.date ? 'active' : ''}`}
+            key={group.date}
+            onClick={() => setSelectedDate(group.date)}
+          >
+            {group.date}
+            <span>{group.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {sortedReports.length === 0 ? (
         <div className="alert alert-warning">
           조건에 맞는 리포트가 없습니다.
         </div>
       ) : (
-        <div className="accordion" id="reportDateAccordion">
-          {groupedReports.map((group, index) => {
-            const isOpen = openDates[group.date] ?? index === 0;
+        <div className="report-list-panel border rounded shadow-sm">
+          <div className="report-list-panel-header">
+            <strong>리포트 {sortedReports.length}개</strong>
+            <span className="text-muted small">
+              최신 날짜순
+            </span>
+          </div>
 
-            return (
-              <div className="accordion-item" key={group.date}>
-                <h2 className="accordion-header">
-                  <button
-                    type="button"
-                    className={`accordion-button ${isOpen ? '' : 'collapsed'}`}
-                    onClick={() => toggleDate(group.date)}
-                  >
-                    <span className="fw-bold me-2">{group.date}</span>
-                    <span className="badge bg-secondary rounded-pill">
-                      {group.reports.length}개
-                    </span>
-                  </button>
-                </h2>
+          <div className="report-list-scroll">
+            {sortedReports.map((report, reportIndex) => {
+              const title = getReportTitle(report);
 
-                {isOpen && (
-                  <div className="accordion-collapse collapse show">
-                    <div className="accordion-body p-0">
-                      <div className="list-group list-group-flush">
-                        {group.reports.map((report, reportIndex) => {
-                          const title = getReportTitle(report);
+              return (
+                <button
+                  type="button"
+                  key={`${report.date}-${report.filename}-${reportIndex}`}
+                  className={`report-list-item ${
+                    selectedReport?.date === report.date &&
+                    selectedReport?.filename === report.filename
+                      ? 'active'
+                      : ''
+                  }`}
+                  onClick={() => onReportClick(report)}
+                >
+                  <span className="report-list-item-main">
+                    <span className="report-list-title">{title}</span>
+                    <span className="report-list-date">{report.date || '날짜 없음'}</span>
+                  </span>
 
-                          return (
-                            <button
-                              type="button"
-                              key={`${report.date}-${report.filename}-${reportIndex}`}
-                              className="list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3"
-                              onClick={() => onReportClick(report)}
-                            >
-                              <span className="d-flex align-items-center gap-2">
-                                <span className="fs-5">📄</span>
-                                <strong>{title}</strong>
-                              </span>
-
-                              <span className="text-muted small">
-                                자세히 보기 &rarr;
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  <span className="report-list-action">
+                    상세 리포트
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

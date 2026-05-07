@@ -44,6 +44,12 @@
   margin-bottom: 18px;
 }
 
+.report-today-create-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
 .report-selector-toolbar {
   display: flex;
   align-items: center;
@@ -109,41 +115,61 @@
   height: 14px;
 }
 
+.report-opinion-filter.status-strong-buy {
+  border-color: #a7c2ff;
+  background: #eef4ff;
+  color: #0b5ed7;
+}
+
+.report-opinion-filter.status-strong-buy input {
+  accent-color: #0b5ed7;
+}
+
 .report-opinion-filter.status-buy {
-  border-color: #badbcc;
-  background: #f4fbf7;
-  color: #198754;
+  border-color: #9fd9b8;
+  background: #effaf3;
+  color: #087f4f;
 }
 
 .report-opinion-filter.status-buy input {
-  accent-color: #198754;
+  accent-color: #087f4f;
 }
 
 .report-opinion-filter.status-sell {
-  border-color: #f1aeb5;
-  background: #fff7f7;
-  color: #dc3545;
+  border-color: #ffb3a8;
+  background: #fff3f0;
+  color: #d33b1f;
 }
 
 .report-opinion-filter.status-sell input {
-  accent-color: #dc3545;
+  accent-color: #d33b1f;
 }
 
 .report-opinion-filter.status-hold {
-  border-color: #ced4da;
-  background: #f8f9fa;
-  color: #6c757d;
+  border-color: #ffd36a;
+  background: #fff8e1;
+  color: #8a5a00;
 }
 
 .report-opinion-filter.status-hold input {
-  accent-color: #6c757d;
+  accent-color: #b7791f;
+}
+
+.report-opinion-filter.status-stop {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.report-opinion-filter.status-stop input {
+  accent-color: #475569;
 }
 
 .report-selector-list {
   display: grid;
   max-height: 210px;
   overflow-y: auto;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 10px;
   margin-bottom: 18px;
   padding: 2px 4px 4px 2px;
@@ -215,6 +241,12 @@
   white-space: nowrap;
 }
 
+.report-selector-meta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
 .report-selector-opinion {
   flex: 0 0 auto;
   min-width: 52px;
@@ -226,19 +258,29 @@
   text-align: center;
 }
 
+.report-selector-opinion.status-strong-buy {
+  background: #e7f0ff;
+  color: #0b5ed7;
+}
+
 .report-selector-opinion.status-buy {
-  background: #eaf7ef;
-  color: #198754;
+  background: #e8f7ee;
+  color: #087f4f;
 }
 
 .report-selector-opinion.status-sell {
-  background: #fff0f1;
-  color: #dc3545;
+  background: #fff0eb;
+  color: #d33b1f;
 }
 
 .report-selector-opinion.status-hold {
-  background: #f1f3f5;
-  color: #6c757d;
+  background: #fff4c2;
+  color: #8a5a00;
+}
+
+.report-selector-opinion.status-stop {
+  background: #e2e8f0;
+  color: #334155;
 }
 
 .report-selector-empty {
@@ -258,6 +300,58 @@
   min-height: 250px;
   font-size: 0.95rem;
   line-height: 1.7;
+}
+
+.report-markdown-container > :first-child,
+.report-markdown-container h1:first-child,
+.report-markdown-container h2:first-child,
+.report-markdown-container h3:first-child {
+  margin-top: 0;
+}
+
+.report-markdown-container.markdown-content > .report-detail-context + h1,
+.report-markdown-container.markdown-content > .report-detail-context + h2,
+.report-markdown-container.markdown-content > .report-detail-context + h3 {
+  margin-top: 10px !important;
+  padding-top: 0;
+}
+
+.report-detail-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-bottom: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.report-detail-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.report-detail-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #212529;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-detail-date {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #ffffff;
+  color: #495057;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .report-markdown-container table {
@@ -306,6 +400,11 @@
     display: block;
   }
 
+  .report-today-create-button {
+    width: 100%;
+    margin-top: 10px;
+  }
+
   .report-selector-toolbar {
     display: block;
   }
@@ -318,5 +417,20 @@
 
   .report-selector-list {
     grid-template-columns: 1fr;
+  }
+
+  .report-detail-context {
+    display: block;
+  }
+
+  .report-detail-heading,
+  .report-detail-title,
+  .report-detail-date {
+    display: block;
+  }
+
+  .report-detail-date {
+    width: fit-content;
+    margin-top: 6px;
   }
 }

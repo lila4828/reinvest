@@ -10,18 +10,18 @@ function MainHeader({ username, onLogout }) {
     <>
       <header className="p-3 border-bottom bg-white shadow-sm">
         <div className="container">
-          <div className="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start gap-2">
-            <Link to="/" className="logo-link fs-4 fw-bold me-auto text-primary text-decoration-none">
+          <div className="main-header-inner">
+            <Link to="/" className="logo-link fs-4 fw-bold text-primary text-decoration-none">
               AI-Reinvest
             </Link>
 
-            {username && (
-              <span className="text-muted small me-2">
-                {username}님
-              </span>
-            )}
+            <div className="main-header-actions">
+              {username && (
+                <span className="main-header-user text-muted small">
+                  {username}님
+                </span>
+              )}
 
-            <div className="text-end d-flex gap-2">
               {location.pathname === '/' ? (
                 <Link to="/report" className="btn btn-outline-primary fw-bold shadow-sm">
                   📄 상세 리포트 보러가기 &rarr;

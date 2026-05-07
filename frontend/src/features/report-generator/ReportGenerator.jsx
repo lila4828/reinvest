@@ -178,9 +178,6 @@ function ReportGenerator({
             <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
                 <div>
                     <h4 className="fw-bold text-primary mb-1">AI 리포트 생성</h4>
-                    <p className="text-muted mb-0 small">
-                        종목을 여러 개 선택하면 백그라운드에서 순차적으로 투자 리포트를 생성합니다.
-                    </p>
                 </div>
 
                 {isWorking && jobStatus && (
@@ -193,15 +190,11 @@ function ReportGenerator({
             <form onSubmit={handleSubmit}>
                 <div className="row g-3 align-items-end">
                     <div className="col-md-9">
-                        <label className="form-label fw-bold">
-                            종목 검색
-                        </label>
-
                         <div className="stock-search-wrapper">
                             <input
                                 type="text"
                                 className="form-control"
-                                placeholder="종목명 또는 티커를 입력한 뒤 검색 결과를 선택해 주세요"
+                                placeholder="종목명를 입력한 뒤 검색 결과를 선택해 주세요"
                                 value={keyword}
                                 onChange={handleKeywordChange}
                                 onFocus={() => {

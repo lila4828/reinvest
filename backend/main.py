@@ -1,10 +1,10 @@
 import os
 import json
 import logging
-import re
 from dotenv import load_dotenv
 from crewai import Crew, Process, LLM
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 from flows.research.agent import ResearchAgent
 from flows.research.task import ResearchTask
@@ -17,15 +17,17 @@ from flows.macro.task import MacroTask
 from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
 
-# 유튜브 자동화 파이프라인 임포트
+# ????ｋ뽫뜏?????嶺??????????썹땟怨꼲??????꾣뤃管爾??
 from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
 from vector_db.update_youtube_db import build_local_youtube_db
 from vector_db.build_vector_db import build_db_from_transcripts
+from services.report_file_service import save_report_files
+from services.summary_service import extract_report_summary
+from schemas.report_state import ReportState, create_initial_report_state
 
-# 시스템 로깅 및 디버깅 레이어
-from logging.handlers import RotatingFileHandler
+# ??嶺?筌???汝??吏???????됰Ŧ???븍툖異????繹먮굟瑗??from logging.handlers import RotatingFileHandler
 
-# 0. 환경 변수 로드
+# 0. ?????ъ졒 ??⑤슢堉????汝??吏??좉텣?
 load_dotenv()
 
 log_file_handler = RotatingFileHandler(
@@ -81,7 +83,7 @@ SCORING_CONFIG = {
 def require_env(name: str):
     value = os.getenv(name)
     if not value:
-        raise RuntimeError(f"환경변수 누락: {name}")
+        raise RuntimeError(f"?????ъ졒??⑤슢堉???????썹땟怨꼲? {name}")
     return value
 
 
@@ -95,38 +97,38 @@ def is_valid_numeric_series(values, min_len=3):
 
 def calculate_macro_score(exchange_rate, us_10y_yield, vix_index):
     if exchange_rate is None or us_10y_yield is None or vix_index is None:
-        return 0, ["매크로 핵심 지표 일부 누락으로 중립 처리"]
+        return 0, ["macro data missing"]
 
     cfg = SCORING_CONFIG["macro"]
     score = 0
     reasons = []
 
-    # 1) 투심: VIX
+    # 1) ???? VIX
     if vix_index >= cfg["vix_high_risk"]:
         score -= 1
-        reasons.append(f"VIX {vix_index} 고위험")
+        reasons.append(f"VIX {vix_index} high risk")
     elif 0 < vix_index <= cfg["vix_low_risk"]:
         score += 1
-        reasons.append(f"VIX {vix_index} 안정")
+        reasons.append(f"VIX {vix_index} stable")
 
-    # 2) 할인율: 미국 10년물 금리
+    # 2) ????◈?뙿?? ???붺몭???10????썼キ????궰????
     if us_10y_yield >= cfg["us_10y_high_risk"]:
         score -= 1
-        reasons.append(f"미 10년물 {us_10y_yield} 고금리 부담")
+        reasons.append(f"US 10Y {us_10y_yield} high yield pressure")
     elif 0 < us_10y_yield <= cfg["us_10y_low_risk"]:
         score += 1
-        reasons.append(f"미 10년물 {us_10y_yield} 금리 부담 완화")
+        reasons.append(f"US 10Y {us_10y_yield} low yield relief")
 
-    # 3) 환율
+    # 3) ????볥궙筌?
     if exchange_rate >= cfg["exchange_rate_high_risk"]:
         score -= 1
-        reasons.append(f"환율 {exchange_rate}원 고환율 부담")
+        reasons.append(f"exchange rate {exchange_rate} high FX pressure")
     elif 0 < exchange_rate <= cfg["exchange_rate_low_risk"]:
         score += 1
-        reasons.append(f"환율 {exchange_rate}원 안정")
+        reasons.append(f"exchange rate {exchange_rate} stable")
 
     if not reasons:
-        reasons.append("매크로 지표가 중립 구간")
+        reasons.append("macro indicators are neutral")
 
     return score, reasons
 
@@ -137,42 +139,42 @@ def calculate_fundamental_score(net_income, fcf, revenue, debt_to_equity=None):
         or not is_valid_numeric_series(fcf)
         or not is_valid_numeric_series(revenue)
     ):
-        return 0, ["재무 배열 데이터 불완전"]
+        return 0, ["financial series data invalid"]
 
     score = 0
     reasons = []
 
-    # 순이익
+    # ??嶺뚮?????
     if net_income[-1] > 0 and net_income[-1] >= net_income[-2]:
         score += 1
-        reasons.append("최근 순이익 흑자 및 전년 대비 개선")
+        reasons.append("recent net income positive or improved")
     elif net_income[-1] < 0:
         score -= 1
-        reasons.append("최근 순이익 적자")
+        reasons.append("recent net income is negative")
 
     # FCF
     if fcf[-1] > 0:
         score += 1
-        reasons.append("최근 FCF 플러스")
+        reasons.append("recent FCF positive")
     elif fcf[-1] < 0:
         score -= 1
-        reasons.append("최근 FCF 마이너스")
+        reasons.append("recent FCF negative")
 
-    # 매출
+    # ?꿔꺂?????
     if revenue[-1] > revenue[-2]:
         score += 1
-        reasons.append("최근 매출 성장")
+        reasons.append("recent revenue declined")
     elif revenue[-1] < revenue[-2]:
         score -= 1
-        reasons.append("최근 매출 감소")
+        reasons.append("recent revenue growth")
 
-    # 부채비율
+    # ???낇뀘???????
     debt_warning_cutoff = SCORING_CONFIG["financial"]["debt_warning_cutoff"]
     if isinstance(debt_to_equity, (int, float)) and debt_to_equity > debt_warning_cutoff:
         score -= 1
-        reasons.append(f"부채비율 {debt_to_equity}%로 100% 초과")
+        reasons.append(f"debt-to-equity {debt_to_equity}% exceeds 100%")
 
-    # 과도한 영향 방지: -3 ~ +3으로 제한
+    # ??縕????????브컯???熬곣뫖?삥납?: -3 ~ +3????Β????????뎡
     score = max(-3, min(3, score))
 
     return score, reasons
@@ -180,7 +182,7 @@ def calculate_fundamental_score(net_income, fcf, revenue, debt_to_equity=None):
 
 def get_price_unit(ticker: str):
     if ticker.endswith(".KS") or ticker.endswith(".KQ"):
-        return "원"
+        return "KRW"
     return "USD"
 
 
@@ -191,22 +193,10 @@ def format_price(value, unit):
     if not isinstance(value, (int, float)):
         return "N/A"
 
-    if unit == "원":
-        return f"{value:,.0f}원"
+    if unit == "KRW":
+        return f"{value:,.0f} KRW"
 
     return f"${value:,.2f}"
-
-def sanitize_filename(value: str):
-    """
-    Windows/macOS/Linux에서 문제 될 수 있는 파일명 문자를 제거한다.
-    """
-    invalid_chars = '<>:"/\\|?*'
-    text = str(value)
-
-    for ch in invalid_chars:
-        text = text.replace(ch, "_")
-
-    return text.strip()
 
 def truncate_text(value, max_chars=3000):
     if value is None:
@@ -218,158 +208,6 @@ def truncate_text(value, max_chars=3000):
         return text
 
     return text[:max_chars] + "\n...[TRUNCATED]"
-
-def extract_report_summary(md_report: str):
-    if not md_report or not isinstance(md_report, str):
-        return ""
-
-    # 상세 본문 시작 전까지만 남김
-    return md_report.split("\n---")[0].strip()
-
-def build_failed_report_card(company: str, report: str):
-    """
-    분석 실패/중단 종목도 MainBody.jsx가 파싱할 수 있도록
-    정상 리포트 카드 heading 형식으로 감싼다.
-    """
-    reason = str(report or "분석 실패").strip()
-
-    return (
-        f"# 📈 {company} 심층 투자 전략 리포트\n\n"
-        f"| 구분 | 상태 |\n"
-        f"| :--- | :--- |\n"
-        f"| **분석 결과** | **분석 중단** |\n\n"
-        f"### ⚠️ 분석 중단 사유\n"
-        f"> {reason}\n"
-    )
-
-
-def normalize_report_for_summary_item(item):
-    company = item.get("company", "N/A")
-    status = item.get("status")
-    report = item.get("report", "")
-
-    if status == "SUCCESS":
-        return report
-
-    return build_failed_report_card(company, report)
-
-def build_summary_from_output_reports(output):
-    """
-    이번 실행 결과(output["reports"])만 기준으로 summary.md 본문을 만든다.
-    멀티 종목 생성 시 개별 md 파일 스캔에 의존하지 않고,
-    output["reports"]에 들어온 종목을 모두 summary에 반영한다.
-    """
-    header = extract_summary_header(output.get("summary", ""))
-
-    summary_cards = []
-
-    for item in output.get("reports", []):
-        company = item.get("company", "N/A")
-        status = item.get("status")
-        report = item.get("report", "")
-
-        if status == "SUCCESS":
-            report_summary = extract_report_summary(report)
-
-            if report_summary:
-                summary_cards.append(report_summary)
-            else:
-                summary_cards.append(
-                    f"# 📈 {company} 심층 투자 전략 리포트\n\n"
-                    f"> 리포트 요약 추출 실패"
-                )
-        else:
-            summary_cards.append(
-                f"# 📈 {company} 심층 투자 전략 리포트\n\n"
-                f"> {report or '분석 실패'}"
-            )
-
-    if not summary_cards:
-        return output.get("summary", "")
-
-    if header:
-        return header + "\n\n---\n\n" + "\n\n---\n\n".join(summary_cards)
-
-    return "\n\n---\n\n".join(summary_cards)
-
-def extract_summary_header(summary_text: str):
-    if not summary_text or not isinstance(summary_text, str):
-        return ""
-
-    header = summary_text.split("\n\n---\n\n", 1)[0].strip()
-    first_report_index = header.find("\n# ")
-
-    if first_report_index >= 0:
-        header = header[:first_report_index].strip()
-
-    return header
-
-
-def build_merged_summary(result_dir: str, current_summary: str):
-    header = extract_summary_header(current_summary)
-    report_candidates = {}
-
-    for filename in sorted(os.listdir(result_dir)):
-        if not filename.endswith(".md") or filename == "summary.md":
-            continue
-
-        file_path = os.path.join(result_dir, filename)
-
-        if not os.path.isfile(file_path):
-            continue
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                report_summary = extract_report_summary(f.read())
-        except Exception as e:
-            logger.warning(f"summary merge skip failed: path={file_path}, error={e}")
-            continue
-
-        if not report_summary or "[분석 중단]" in report_summary:
-            continue
-
-        filename_without_ext = filename[:-3]
-        ticker = filename_without_ext.rsplit("_", 1)[-1]
-        normalized_ticker = normalize_ticker_for_summary(ticker)
-        modified_at = os.path.getmtime(file_path)
-        current_candidate = report_candidates.get(normalized_ticker)
-
-        if not current_candidate or modified_at >= current_candidate["modified_at"]:
-            report_candidates[normalized_ticker] = {
-                "modified_at": modified_at,
-                "summary": report_summary,
-            }
-
-    summary_cards = [
-        item["summary"]
-        for item in sorted(
-            report_candidates.values(),
-            key=lambda value: value["modified_at"],
-            reverse=True,
-        )
-    ]
-
-    if not summary_cards:
-        return current_summary
-
-    if header:
-        return header + "\n\n---\n\n" + "\n\n---\n\n".join(summary_cards)
-
-    return "\n\n---\n\n".join(summary_cards)
-
-
-def normalize_ticker_for_summary(ticker: str):
-    ticker = str(ticker or "").strip().upper()
-
-    if (
-        len(ticker) == 10
-        and ticker.startswith("A")
-        and ticker[1:7].isalnum()
-        and ticker[7:] in [".KS", ".KQ"]
-    ):
-        return ticker[1:]
-
-    return ticker
 
 def normalize_kr_ticker(ticker: str):
     ticker = str(ticker or "").strip().upper()
@@ -386,8 +224,8 @@ def normalize_kr_ticker(ticker: str):
 
 def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
     """
-    최종 AnalysisAgent에 넘길 입력을 압축한다.
-    너무 긴 원본 JSON을 그대로 넣으면 토큰 초과 / Pydantic 파싱 실패 위험이 커진다.
+    ?꿔꺂????쭍?瑜귣젺?AnalysisAgent??????醫롫뼰 ????怨몄７???癲ル슢캉????嶺뚮㉡???
+    ?????????雅?JSON?????녾컯嶺????鶯ㅺ동????類㎮뵾?????ｋ???潁???/ Pydantic ??????????곌숯 ????꾣뤃?????影?れ쉬傭??
     """
     compact_accounting = {
         "ticker": acc_data.get("ticker"),
@@ -429,26 +267,26 @@ def safe_kickoff(crew, label: str):
     try:
         return crew.kickoff()
     except Exception as e:
-        logger.exception(f"❌ {label} kickoff 실패: {e}")
+        logger.exception(f"??{label} kickoff ?????곌숯: {e}")
         return DummyResult()
 
 def normalize_stock_pool(stock_pool):
     """
-    외부 입력 종목 데이터를 main.py 내부 표준 형식으로 변환한다.
-    표준 형식: [("TSLA", "테슬라"), ("005930.KS", "삼성전자")]
+    ?癲? ????怨몄７ ????띻샴???????????? main.py ???? ??? ?癲ル슢캉??쏆춿????Β????⑤슢堉?????쑩???
+    ??? ?癲ル슢캉??쏆춿? [("TSLA", "??????), ("005930.KS", "??濚밸Þ??????썹땟??)]
     """
 
     default_stock_pool = [
-        ("TSLA", "테슬라"),
-        ("005930.KS", "삼성전자"),
-        ("000660.KS", "SK하이닉스"),
+        ("TSLA", "Tesla"),
+        ("005930.KS", "Samsung Electronics"),
+        ("000660.KS", "SK Hynix"),
     ]
 
     if stock_pool is None:
         return default_stock_pool
 
     if not isinstance(stock_pool, list) or not stock_pool:
-        raise ValueError("stock_pool은 비어 있지 않은 list여야 합니다.")
+        raise ValueError("stock_pool?? ????猷뱀쟼???? ??? list??????嶺뚮ㅎ????")
 
     normalized = []
 
@@ -459,26 +297,32 @@ def normalize_stock_pool(stock_pool):
         elif isinstance(item, (list, tuple)) and len(item) == 2:
             ticker, company = item
         else:
-            raise ValueError(f"잘못된 종목 입력 형식입니다: {item}")
+            raise ValueError(f"???????????띻샴??????怨몄７ ?癲ル슢캉??쏆춿?????뉖뤁?? {item}")
 
         ticker = normalize_kr_ticker(ticker)
         company = str(company).strip() if company else ""
 
         if not ticker or not company:
-            raise ValueError(f"ticker/company 값이 비어 있습니다: {item}")
+            raise ValueError(f"ticker/company ??醫딆┫???????猷뱀쟼???????????딅젩: {item}")
 
         normalized.append((ticker, company))
 
     return normalized
 
-def run_financial_crew(stock_pool=None):
-    stock_pool = normalize_stock_pool(stock_pool)
-    openai_api_key = require_env("OPENAI_API_KEY")
 
-    # 뉴스 리서치에서 사용
-    require_env("SERPER_API_KEY")
+def set_report_step(state: ReportState | None, step: str):
+    if state is not None:
+        state["current_step"] = step
 
-    # 1. 모델 정의
+
+def append_report_error(state: ReportState | None, message: str):
+    if state is None:
+        return
+
+    state.setdefault("errors", []).append(message)
+
+
+def create_llms(openai_api_key: str):
     fast_llm = LLM(
         model="gpt-4o-mini",
         api_key=openai_api_key,
@@ -498,52 +342,57 @@ def run_financial_crew(stock_pool=None):
         timeout=120,
     )
 
-    # ---------------------------------------------------------
-    # 0. 에이전트 및 태스크 사전 초기화
-    # ---------------------------------------------------------
+    return fast_llm, fact_llm, smart_llm
+
+
+def create_crew_components(fast_llm, fact_llm, smart_llm):
     macro_admin = MacroAgent(fast_llm)
     acc_admin = AccountingAgent(fast_llm)
     res_admin = ResearchAgent(fact_llm)
     yt_admin = YoutubeAgent(fact_llm)
     ana_admin = AnalysisAgent(smart_llm)
 
-    macro_agent = macro_admin.macro_economist()
-    accounting_agent = acc_admin.financial_analyst()
-    researcher_agent = res_admin.news_researcher()
-    youtube_agent = yt_admin.guru_analyst()
-    analyst_agent = ana_admin.investment_analyst()
+    return {
+        "agents": {
+            "macro": macro_admin.macro_economist(),
+            "accounting": acc_admin.financial_analyst(),
+            "research": res_admin.news_researcher(),
+            "youtube": yt_admin.guru_analyst(),
+            "analysis": ana_admin.investment_analyst(),
+        },
+        "tasks": {
+            "macro": MacroTask(),
+            "accounting": AccountingTask(),
+            "research": ResearchTask(),
+            "youtube": YoutubeTask(),
+            "analysis": AnalysisTask(),
+        },
+    }
 
-    macro_tasks = MacroTask()
-    acc_tasks = AccountingTask()
-    res_tasks = ResearchTask()
-    yt_tasks = YoutubeTask()
-    ana_tasks = AnalysisTask()
 
-    # ---------------------------------------------------------
-    # 0. 유튜브 DB 업데이트
-    # ---------------------------------------------------------
-    logger.debug("🔄 [0단계] 유튜브 최신 영상 확인...")
+def update_youtube_vector_db():
+    logger.debug("???[0??壤굿???? ????ｋ뽫뜏???꿔꺂????쭍??????노듋嶺??癲ル슢캉????..")
 
     try:
         new_vids = fetch_all_latest_youtube_ids(fetch_limit=5)
 
         if new_vids:
             logger.info(
-                f"🚨 신규 영상 {len(new_vids)}개 감지 "
-                f"→ 자막 생성 및 증분 임베딩 진행"
+                f"???????ャ렑??????노듋嶺?{len(new_vids)}????醫딆┫?? "
+                f"updating YouTube vector DB"
             )
             build_local_youtube_db()
             build_db_from_transcripts()
         else:
-            logger.info("✅ 신규 영상 없음 → 기존 YouTube 벡터DB 사용")
+            logger.info("no new YouTube videos; using existing DB")
 
     except Exception as e:
-        logger.exception(f"⚠️ 유튜브 DB 업데이트 실패 → 기존 DB로 진행: {e}")
+        logger.exception(f"????ы꺎??????ｋ뽫뜏??DB ?????욍걛???ш끽維???????곌숯 ?????뚯????DB???꿔꺂????紐꾩뗄? {e}")
 
-    # ---------------------------------------------------------
-    # 1. 매크로 분석
-    # ---------------------------------------------------------
-    logger.debug("🌍 [1단계] 매크로 분석 시작")
+
+def run_macro_step(macro_agent, macro_tasks, state: ReportState | None = None):
+    set_report_step(state, "macro")
+    logger.debug("macro analysis started")
 
     task_macro = macro_tasks.analyze_macro_economy(macro_agent)
 
@@ -557,20 +406,21 @@ def run_financial_crew(stock_pool=None):
     macro_result = safe_kickoff(macro_crew, "Macro Crew")
 
     if not macro_result.pydantic or not getattr(macro_result.pydantic, "is_data_valid", False):
-        logger.warning("매크로 데이터 수집 실패 → 중립 macro_score 적용")
+        logger.warning("macro data collection failed; neutral macro_score applied")
         macro_score = 0
-        macro_score_reasons = ["매크로 데이터 수집 실패로 중립 처리"]
+        macro_score_reasons = ["macro data collection failed; neutral score applied"]
+        macro_data = {
+            "exchange_rate": None,
+            "us_10y_yield": None,
+            "nasdaq_index": None,
+            "wti_price": None,
+            "vix_index": None,
+            "macro_briefing": "macro data collection failed; neutral state applied",
+            "is_data_valid": False,
+            "error": "macro_result invalid",
+        }
         macro_json = json.dumps(
-            {
-                "exchange_rate": None,
-                "us_10y_yield": None,
-                "nasdaq_index": None,
-                "wti_price": None,
-                "vix_index": None,
-                "macro_briefing": "매크로 데이터 수집 실패로 중립 상태 적용",
-                "is_data_valid": False,
-                "error": "macro_result invalid",
-            },
+            macro_data,
             ensure_ascii=False,
             indent=2,
         )
@@ -584,448 +434,501 @@ def run_financial_crew(stock_pool=None):
             vix_index=macro_data.get("vix_index"),
         )
 
-    logger.info(f"✅ 매크로 분석 완료 (Macro Score: {macro_score}, 이유: {macro_score_reasons})")
+    logger.info(f"???꿔꺂????關臾쇘춯癒?돵?????곗뒩泳??????썹땟??(Macro Score: {macro_score}, ????: {macro_score_reasons})")
 
-    # ---------------------------------------------------------
-    # 2. 종목 루프
-    # ---------------------------------------------------------
-    all_reports = []
+    if state is not None:
+        state["macro_data"] = {
+            "raw": macro_data,
+            "json": macro_json,
+            "macro_score": macro_score,
+            "macro_score_reasons": macro_score_reasons,
+        }
 
-    logger.debug("🏭 [시스템] 종목 분석 파이프라인 가동")
+    return macro_score, macro_score_reasons, macro_json
 
-    for ticker, company in stock_pool:
-        try:
-            logger.info(f"🎯 분석 시작: {company} ({ticker})")
 
-            # ---------------------------------------------------------
-            # 1. 재무 분석
-            # ---------------------------------------------------------
-            task_accounting = acc_tasks.analyze_financial_statements(
-                accounting_agent,
-                company,
-                ticker,
-            )
+def build_failed_report_item(ticker: str, company: str, message: str):
+    return {
+        "ticker": ticker,
+        "company": company,
+        "status": "FAILED",
+        "report": message,
+    }
 
-            financial_crew = Crew(
-                agents=[accounting_agent],
-                tasks=[task_accounting],
-                verbose=False,
-                cache=False,
-            )
 
-            acc_result = safe_kickoff(financial_crew, f"{company} Accounting Crew")
+def run_accounting_step(
+    accounting_agent,
+    acc_tasks,
+    ticker: str,
+    company: str,
+    state: ReportState | None = None,
+):
+    set_report_step(state, "accounting")
+    task_accounting = acc_tasks.analyze_financial_statements(
+        accounting_agent,
+        company,
+        ticker,
+    )
 
-            if not acc_result.pydantic or not getattr(acc_result.pydantic, "is_data_valid", False):
-                msg = f"🚫 [분석 중단] {company}: 재무 데이터 수집 실패 또는 파싱 오류"
-                logger.error(msg)
-                all_reports.append({
-                    "ticker": ticker,
-                    "company": company,
-                    "status": "FAILED",
-                    "report": msg,
-                })
-                continue
+    financial_crew = Crew(
+        agents=[accounting_agent],
+        tasks=[task_accounting],
+        verbose=False,
+        cache=False,
+    )
 
-            acc_data = acc_result.pydantic.model_dump(mode="json")
+    acc_result = safe_kickoff(financial_crew, f"{company} Accounting Crew")
 
-            net_income = acc_data.get("net_income", [])
-            fcf = acc_data.get("fcf", [])
-            revenue = acc_data.get("revenue", [])
+    if not acc_result.pydantic or not getattr(acc_result.pydantic, "is_data_valid", False):
+        msg = f"???[???곗뒩泳??嚥싳쉶瑗??꾧틚?? {company}: ?????????????????볥궚???????곌숯 ??????????????怨몄뵒"
+        logger.error(msg)
+        append_report_error(state, msg)
+        if state is not None:
+            state["status"] = "failed"
+        return None, build_failed_report_item(ticker, company, msg)
 
-            if (
-                not is_valid_numeric_series(net_income)
-                or not is_valid_numeric_series(fcf)
-                or not is_valid_numeric_series(revenue)
-            ):
-                msg = f"🚫 [분석 중단] {company} FAIL 사유: 3개년 재무 데이터 부족 또는 숫자형 데이터 오류"
-                logger.warning(msg)
-                all_reports.append({
-                    "ticker": ticker,
-                    "company": company,
-                    "status": "FAILED",
-                    "report": msg,
-                })
-                continue
+    acc_data = acc_result.pydantic.model_dump(mode="json")
+    if state is not None:
+        state["accounting_data"] = acc_data
 
-            # ---------------------------------------------------------
-            # 2. 기계적 FAIL 판정 룰베이스
-            # ---------------------------------------------------------
-            is_fail = False
-            fail_reason = ""
+    net_income = acc_data.get("net_income", [])
+    fcf = acc_data.get("fcf", [])
+    revenue = acc_data.get("revenue", [])
 
-            debt_to_equity = acc_data.get("debt_to_equity")
+    if (
+        not is_valid_numeric_series(net_income)
+        or not is_valid_numeric_series(fcf)
+        or not is_valid_numeric_series(revenue)
+    ):
+        msg = f"???[???곗뒩泳??嚥싳쉶瑗??꾧틚?? {company} FAIL ????: 3??醫딆┻???????????????????낇뀘???????????????????????????怨몄뵒"
+        logger.warning(msg)
+        append_report_error(state, msg)
+        if state is not None:
+            state["status"] = "failed"
+        return None, build_failed_report_item(ticker, company, msg)
 
-            if all(ni < 0 for ni in net_income):
-                is_fail = True
-                fail_reason = "3개년 연속 순이익 적자"
-            elif all(f < 0 for f in fcf):
-                is_fail = True
-                fail_reason = "3개년 연속 잉여현금흐름(FCF) 마이너스"
-            elif revenue[-1] <= 0:
-                is_fail = True
-                fail_reason = "최근 매출 데이터 오류(0 이하)"
-            elif isinstance(debt_to_equity, (int, float)) and debt_to_equity > 200:
-                is_fail = True
-                fail_reason = "부채비율 200% 초과"
+    is_fail = False
+    fail_reason = ""
 
-            if is_fail:
-                msg = f"🚫 [분석 중단] {company} FAIL 사유: {fail_reason}"
-                logger.warning(msg)
-                all_reports.append({
-                    "ticker": ticker,
-                    "company": company,
-                    "status": "FAILED",
-                    "report": msg,
-                })
-                continue
+    debt_to_equity = acc_data.get("debt_to_equity")
 
-            fund_score, fund_score_reasons = calculate_fundamental_score(
-                net_income=net_income,
-                fcf=fcf,
-                revenue=revenue,
-                debt_to_equity=debt_to_equity,
-            )
+    if all(ni < 0 for ni in net_income):
+        is_fail = True
+        fail_reason = "3-year continuous FCF negative"
+    elif all(f < 0 for f in fcf):
+        is_fail = True
+        fail_reason = "3-year continuous free cash flow negative"
+    elif revenue[-1] <= 0:
+        is_fail = True
+        fail_reason = "?꿔꺂????쭍???꿔꺂??????????????????怨몄뵒(0 ???ш끽維??"
+    elif isinstance(debt_to_equity, (int, float)) and debt_to_equity > 200:
+        is_fail = True
+        fail_reason = "debt-to-equity exceeds 200%"
 
-            acc_data["status"] = "PASS"
-            acc_data["fundamental_score"] = fund_score
-            acc_data["fundamental_score_reasons"] = fund_score_reasons
+    if is_fail:
+        msg = f"???[???곗뒩泳??嚥싳쉶瑗??꾧틚?? {company} FAIL ????: {fail_reason}"
+        logger.warning(msg)
+        append_report_error(state, msg)
+        if state is not None:
+            state["status"] = "failed"
+        return None, build_failed_report_item(ticker, company, msg)
 
-            acc_json = json.dumps(
-                acc_data,
-                indent=2,
-                ensure_ascii=False,
-                default=str,
-            )
+    fund_score, fund_score_reasons = calculate_fundamental_score(
+        net_income=net_income,
+        fcf=fcf,
+        revenue=revenue,
+        debt_to_equity=debt_to_equity,
+    )
 
-            logger.info(f"✅ 재무 검증 통과 (Fund Score: {fund_score})")
+    acc_data["status"] = "PASS"
+    acc_data["fundamental_score"] = fund_score
+    acc_data["fundamental_score_reasons"] = fund_score_reasons
+    if state is not None:
+        state["accounting_data"] = acc_data
 
-            # ---------------------------------------------------------
-            # 3. 뉴스 & 유튜브 순차 수집
-            # ---------------------------------------------------------
-            logger.debug(f"🔄 [{company}] 리서치 데이터 수집 중...")
+    logger.info(f"???????嚥▲굧???????雅?(Fund Score: {fund_score})")
 
-            def run_research():
-                task_res = res_tasks.collect_news_task(researcher_agent, company)
-                crew = Crew(
-                    agents=[researcher_agent],
-                    tasks=[task_res],
-                    verbose=False,
-                    cache=False,
-                )
-                return safe_kickoff(crew, f"{company} Research Crew")
+    return acc_data, None
 
-            def run_youtube():
-                task_yt = yt_tasks.extract_guru_view(youtube_agent, company)
-                crew = Crew(
-                    agents=[youtube_agent],
-                    tasks=[task_yt],
-                    verbose=False,
-                    cache=False,
-                )
-                return safe_kickoff(crew, f"{company} YouTube Crew")
 
-            research_result = DummyResult()
-            youtube_result = DummyResult()
+def run_research_step(
+    researcher_agent,
+    res_tasks,
+    company: str,
+    state: ReportState | None = None,
+):
+    set_report_step(state, "research")
+    try:
+        task_res = res_tasks.collect_news_task(researcher_agent, company)
+        crew = Crew(
+            agents=[researcher_agent],
+            tasks=[task_res],
+            verbose=False,
+            cache=False,
+        )
+        return safe_kickoff(crew, f"{company} Research Crew")
+    except Exception as e:
+        logger.exception(f"????ы꺎??[{company}] ??잙갭큔??影?뽯눚?????볥궚?????繹먮굝???熬곣뫖利든뜏類ｋ렱????fallback ????쇨덫?? {e}")
+        append_report_error(state, f"??잙갭큔??影?뽯눚?????볥궚?????繹먮굝?? {e}")
+        return DummyResult()
 
-            try:
-                research_result = run_research()
-            except Exception as e:
-                logger.exception(f"⚠️ [{company}] 리서치 수집 예외 발생 → fallback 적용: {e}")
-                research_result = DummyResult()
 
-            logger.debug(f"🔄 [{company}] 유튜브 데이터 수집 중...")
+def parse_research_result(research_result, company: str, state: ReportState | None = None):
+    if not research_result.pydantic or not getattr(research_result.pydantic, "is_data_valid", False):
+        logger.warning(f"[{company}] research data invalid; fallback applied")
+        research_data = {
+                "sentiment_score": 50,
+                "momentum_strength": "LOW",
+                "news_summary": "?꿔꺂????쭍??????◈?뗫┛?섋떋?嚥????????ㅿ폍筌??????????????볥궚???????곌숯",
+                "is_data_valid": False,
+            }
+        research_json = json.dumps(
+            research_data,
+            ensure_ascii=False,
+        )
+        if state is not None:
+            state["research_data"] = {
+                "raw": research_data,
+                "json": research_json,
+                "sentiment": 0,
+            }
+        return 0, research_json
 
-            try:
-                youtube_result = run_youtube()
-            except Exception as e:
-                logger.exception(f"⚠️ [{company}] 유튜브 수집 예외 발생 → fallback 적용: {e}")
-                youtube_result = DummyResult()
+    score = research_result.pydantic.sentiment_score
 
-            # ---------------------------------------------------------
-            # 4. Research 결과 검증
-            # ---------------------------------------------------------
-            if not research_result.pydantic or not getattr(research_result.pydantic, "is_data_valid", False):
-                logger.warning(f"[{company}] 리서치 데이터 수집 실패 → Fallback 적용")
-                sentiment = 0
-                research_json = json.dumps(
-                    {
-                        "sentiment_score": 50,
-                        "momentum_strength": "LOW",
-                        "news_summary": "최신 유의미한 뉴스 데이터 수집 실패",
-                        "is_data_valid": False,
-                    },
-                    ensure_ascii=False,
-                )
-            else:
-                score = research_result.pydantic.sentiment_score
+    research_cfg = SCORING_CONFIG["research"]
 
-                research_cfg = SCORING_CONFIG["research"]
+    if score >= research_cfg["positive_cutoff"]:
+        sentiment = 1
+    elif score <= research_cfg["negative_cutoff"]:
+        sentiment = -1
+    else:
+        sentiment = 0
 
-                if score >= research_cfg["positive_cutoff"]:
-                    sentiment = 1
-                elif score <= research_cfg["negative_cutoff"]:
-                    sentiment = -1
-                else:
-                    sentiment = 0
+    research_data = research_result.pydantic.model_dump(mode="json")
+    research_json = research_result.pydantic.model_dump_json(indent=2)
+    if state is not None:
+        state["research_data"] = {
+            "raw": research_data,
+            "json": research_json,
+            "sentiment": sentiment,
+        }
 
-                research_json = research_result.pydantic.model_dump_json(indent=2)
+    return sentiment, research_json
 
-            # ---------------------------------------------------------
-            # 5. YouTube 결과 검증
-            # ---------------------------------------------------------
-            if not youtube_result.pydantic or not getattr(youtube_result.pydantic, "is_data_valid", False):
-                logger.warning(f"[{company}] 유튜브 데이터 수집 실패 → Fallback 적용")
-                guru_score = 50.0
-                guru_weight = 0.0
-                youtube_json = json.dumps(
-                    {
-                        "guru_sentiment_score": 50.0,
-                        "key_strategy": "N/A",
-                        "content_type": "N/A",
-                        "insight_date": "N/A",
-                        "freshness_level": "N/A",
-                        "mindset_summary": "유의미한 직접 투자 마인드 발언 없음",
-                        "market_principle": "유의미한 시장 대응 원칙 없음",
-                        "risk_control": "유의미한 리스크 관리 발언 없음",
-                        "guru_insight_details": "최신 유의미한 영상 데이터 수집 실패",
-                        "is_data_valid": False,
-                    },
-                    ensure_ascii=False,
-                )
-            else:
-                guru_score = youtube_result.pydantic.guru_sentiment_score
-                content_type = getattr(youtube_result.pydantic, "content_type", "UNKNOWN")
-                freshness_level = getattr(youtube_result.pydantic, "freshness_level", "UNKNOWN")
-                insight_date = getattr(youtube_result.pydantic, "insight_date", "N/A")
 
-                # 구루 70%는 "최신 종목 직접 발언"일 때만 반영
-                # MARKET/MINDSET/RISK/PSYCHOLOGY는 리포트 해석에는 사용하지만 점수에는 반영하지 않음
-                if (
-                    content_type == "SPECIFIC"
-                    and freshness_level in ["FRESH", "RECENT"]
-                    and guru_score != 50.0
-                ):
-                    guru_weight = SCORING_CONFIG["final"]["guru_weight"]
-                else:
-                    guru_weight = 0.0
+def run_youtube_rag_step(
+    youtube_agent,
+    yt_tasks,
+    company: str,
+    state: ReportState | None = None,
+):
+    set_report_step(state, "youtube_rag")
+    try:
+        task_yt = yt_tasks.extract_guru_view(youtube_agent, company)
+        crew = Crew(
+            agents=[youtube_agent],
+            tasks=[task_yt],
+            verbose=False,
+            cache=False,
+        )
+        return safe_kickoff(crew, f"{company} YouTube Crew")
+    except Exception as e:
+        logger.exception(f"????ы꺎??[{company}] ????ｋ뽫뜏??????볥궚?????繹먮굝???熬곣뫖利든뜏類ｋ렱????fallback ????쇨덫?? {e}")
+        append_report_error(state, f"????ｋ뽫뜏??????볥궚?????繹먮굝?? {e}")
+        return DummyResult()
 
-                logger.debug(
-                    f"📺 [{company}] 유튜브 영상 성격 판별: {content_type} "
-                    f"| 신선도: {freshness_level} | 기준일: {insight_date} "
-                    f"| Guru Score: {guru_score} | Guru Weight: {guru_weight:.0%}"
-                )
 
-                youtube_json = youtube_result.pydantic.model_dump_json(indent=2)
+def parse_youtube_result(youtube_result, company: str, state: ReportState | None = None):
+    if not youtube_result.pydantic or not getattr(youtube_result.pydantic, "is_data_valid", False):
+        logger.warning(f"[{company}] youtube data invalid; fallback applied")
+        youtube_data = {
+                "guru_sentiment_score": 50.0,
+                "key_strategy": "N/A",
+                "content_type": "N/A",
+                "insight_date": "N/A",
+                "freshness_level": "N/A",
+                "mindset_summary": "youtube fallback applied",
+                "market_principle": "youtube fallback applied",
+                "risk_control": "youtube fallback applied",
+                "guru_insight_details": "?꿔꺂????쭍??????◈?뗫┛?섋떋?嚥????????노듋嶺??????????????볥궚???????곌숯",
+                "is_data_valid": False,
+            }
+        youtube_json = json.dumps(
+            youtube_data,
+            ensure_ascii=False,
+        )
+        if state is not None:
+            state["youtube_context"] = youtube_json
+        return 50.0, 0.0, youtube_json
 
-            # ---------------------------------------------------------
-            # 6. 최종 투자 의견 결정
-            # ---------------------------------------------------------
-            fundamental_score = acc_data.get("fundamental_score", 0)
+    guru_score = youtube_result.pydantic.guru_sentiment_score
+    content_type = getattr(youtube_result.pydantic, "content_type", "UNKNOWN")
+    freshness_level = getattr(youtube_result.pydantic, "freshness_level", "UNKNOWN")
+    insight_date = getattr(youtube_result.pydantic, "insight_date", "N/A")
 
-            total_score = fundamental_score + macro_score + sentiment
+    # ???????70%??"?꿔꺂????쭍??????띻샴???꿔꺂??????熬곣뫖利든뜏類ｋ렰??????????熬곣뫖利???
+    # MARKET/MINDSET/RISK/PSYCHOLOGY????잙갭큔?됥깾爾??????ㅻ샑筌???????????????????????熬곣뫖利????? ????⑤９??
+    if (
+        content_type == "SPECIFIC"
+        and freshness_level in ["FRESH", "RECENT"]
+        and guru_score != 50.0
+    ):
+        guru_weight = SCORING_CONFIG["final"]["guru_weight"]
+    else:
+        guru_weight = 0.0
 
-            # total_score 범위:
-            # fundamental_score: -3 ~ +3
-            # macro_score: -3 ~ +3
-            # sentiment: -1 ~ +1
-            # 총합: -7 ~ +7
-            # 50점을 중립으로 두고, 1점당 약 7점씩 이동
-            system_score = max(0, min(100, 50 + (total_score * 7)))
+    logger.debug(
+        f"???[{company}] ????ｋ뽫뜏??????노듋嶺??嚥싲갭횧?誘㏐괌?????? {content_type} "
+        f"| ????◈??? {freshness_level} | ???뚯????? {insight_date} "
+        f"| Guru Score: {guru_score} | Guru Weight: {guru_weight:.0%}"
+    )
 
-            if guru_weight > 0:
-                system_weight = SCORING_CONFIG["final"]["system_weight"]
-            else:
-                system_weight = 1.0
+    youtube_json = youtube_result.pydantic.model_dump_json(indent=2)
+    if state is not None:
+        state["youtube_context"] = youtube_json
 
-            final_weighted_score = (system_score * system_weight) + (guru_score * guru_weight)
+    return guru_score, guru_weight, youtube_json
 
-            final_cfg = SCORING_CONFIG["final"]
 
-            if final_weighted_score >= final_cfg["strong_buy_cutoff"]:
-                final_opinion = "Strong Buy"
-            elif final_weighted_score >= final_cfg["buy_cutoff"]:
-                final_opinion = "Buy"
-            elif final_weighted_score >= final_cfg["hold_cutoff"]:
-                final_opinion = "Hold"
-            else:
-                final_opinion = "Sell"
+def decide_final_opinion(
+    acc_data,
+    macro_score,
+    sentiment,
+    guru_score,
+    guru_weight,
+    company: str,
+    state: ReportState | None = None,
+):
+    set_report_step(state, "opinion")
+    fundamental_score = acc_data.get("fundamental_score", 0)
 
-            if guru_score >= 65:
-                guru_sentiment_label = "Bullish"
-            elif guru_score <= 35:
-                guru_sentiment_label = "Bearish"
-            else:
-                guru_sentiment_label = "Neutral"
+    total_score = fundamental_score + macro_score + sentiment
 
-            logger.debug(
-                f"📊 [시스템 채점] {company} | 시스템 점수: {system_score}점 "
-                f"(재무 {fundamental_score} + 매크로 {macro_score} + 뉴스 {sentiment})"
-            )
-            logger.info(
-                f"🤖 [최종 판정] {company} | 종합 {final_weighted_score:.1f}점 "
-                f"(시스템 {system_weight:.0%} + 구루 {guru_weight:.0%}[{guru_sentiment_label}]) → {final_opinion}"
-            )
-            # ---------------------------------------------------------
-            # 7. 목표가 / 방어선 산출
-            # ---------------------------------------------------------
-            current_price = acc_data.get("current_price")
-            ma_60 = acc_data.get("ma_60")
-            ma_200 = acc_data.get("ma_200")
-            ma_350 = acc_data.get("ma_350")
+    # total_score ?筌?????
+    # fundamental_score: -3 ~ +3
+    # macro_score: -3 ~ +3
+    # sentiment: -1 ~ +1
+    # ???믩쑏?誘⑹몡?: -7 ~ +7
+    # 50?????嚥싳쉶瑗??꾧틚?????Β??????? 1???????7??????????
+    system_score = max(0, min(100, 50 + (total_score * 7)))
 
-            if isinstance(current_price, (int, float)) and current_price > 0:
-                if (
-                    isinstance(ma_60, (int, float))
-                    and isinstance(ma_200, (int, float))
-                    and ma_60 > ma_200
-                    and ma_200 > 0
-                ):
-                    target_buy_price = ma_60
-                    defense_price = ma_200
-                else:
-                    target_buy_price = current_price * 0.96
+    if guru_weight > 0:
+        system_weight = SCORING_CONFIG["final"]["system_weight"]
+    else:
+        system_weight = 1.0
 
-                    candidates = [
-                        x for x in [ma_60, ma_200, ma_350]
-                        if isinstance(x, (int, float)) and 0 < x < target_buy_price
-                    ]
+    final_weighted_score = (system_score * system_weight) + (guru_score * guru_weight)
 
-                    defense_price = max(candidates) if candidates else target_buy_price * 0.92
-            else:
-                target_buy_price = None
-                defense_price = None
-                logger.warning(f"⚠️ [{company}] 가격 데이터 부재로 산출 제외")
+    final_cfg = SCORING_CONFIG["final"]
 
-            # ---------------------------------------------------------
-            # 8. 최종 분석 리포트 생성
-            # ---------------------------------------------------------
-            analysis_inputs = compact_analysis_inputs(
-                acc_data=acc_data,
-                macro_json=macro_json,
-                research_json=research_json,
-                youtube_json=youtube_json,
-            )
+    if final_weighted_score >= final_cfg["strong_buy_cutoff"]:
+        final_opinion = "Strong Buy"
+    elif final_weighted_score >= final_cfg["buy_cutoff"]:
+        final_opinion = "Buy"
+    elif final_weighted_score >= final_cfg["hold_cutoff"]:
+        final_opinion = "Hold"
+    else:
+        final_opinion = "Sell"
 
-            task_analysis = ana_tasks.report_writing_task(
-                agent=analyst_agent,
-                company_name=company,
-                accounting_data=analysis_inputs["accounting"],
-                macro_data=analysis_inputs["macro"],
-                news_data=analysis_inputs["research"],
-                youtube_data=analysis_inputs["youtube"],
-                final_opinion=final_opinion,
-                target_buy_price=target_buy_price,
-                defense_price=defense_price,
-            )
+    if guru_score >= 65:
+        guru_sentiment_label = "Bullish"
+    elif guru_score <= 35:
+        guru_sentiment_label = "Bearish"
+    else:
+        guru_sentiment_label = "Neutral"
 
-            analysis_crew = Crew(
-                agents=[analyst_agent],
-                tasks=[task_analysis],
-                process=Process.sequential,
-                verbose=False,
-                cache=False,
-            )
+    logger.debug(
+        f"???[??嶺?筌??????? {company} | ??嶺?筌??????? {system_score}??"
+        f"(????{fundamental_score} + ?꿔꺂????關臾쇘춯癒?돵??{macro_score} + ????ㅿ폍筌?{sentiment})"
+    )
+    logger.info(
+        f"???[?꿔꺂????쭍?瑜귣젺?????? {company} | ????띻샷??? {final_weighted_score:.1f}??"
+        f"(??嶺?筌??{system_weight:.0%} + ???????{guru_weight:.0%}[{guru_sentiment_label}]) ??{final_opinion}"
+    )
 
-            logger.debug(f"🧠 [{company}] 최종 리포트 생성 중...")
-            final_result = safe_kickoff(analysis_crew, f"{company} Analysis Crew")
+    return final_opinion
 
-            # ---------------------------------------------------------
-            # 9. Markdown 렌더링
-            # ---------------------------------------------------------
-            if final_result.pydantic:
-                report_data = final_result.pydantic
-                chart_json = final_result.pydantic.model_dump_json(
-                    include={"chart_data"},
-                    indent=2,
-                )
 
-                price_unit = get_price_unit(ticker)
-                current_price_text = format_price(current_price, price_unit)
-                target_buy_price_text = format_price(target_buy_price, price_unit)
-                defense_price_text = format_price(defense_price, price_unit)
-                
-                if final_opinion in ["Strong Buy", "Buy"]:
-                    buy_comment = "적정 비중 매수 권고"
-                elif final_opinion == "Hold":
-                    buy_comment = "관망 또는 보유 기준"
-                else:
-                    buy_comment = "신규 매수 비권장"
+def calculate_price_targets(acc_data, company: str, state: ReportState | None = None):
+    current_price = acc_data.get("current_price")
+    ma_60 = acc_data.get("ma_60")
+    ma_200 = acc_data.get("ma_200")
+    ma_350 = acc_data.get("ma_350")
 
-                md_report = f"""# 📈 {company} 심층 투자 전략 리포트
+    if isinstance(current_price, (int, float)) and current_price > 0:
+        if (
+            isinstance(ma_60, (int, float))
+            and isinstance(ma_200, (int, float))
+            and ma_60 > ma_200
+            and ma_200 > 0
+        ):
+            target_buy_price = ma_60
+            defense_price = ma_200
+        else:
+            target_buy_price = current_price * 0.96
 
-| 구분 | 가격 정보 | 투자 의견 |
+            candidates = [
+                x for x in [ma_60, ma_200, ma_350]
+                if isinstance(x, (int, float)) and 0 < x < target_buy_price
+            ]
+
+            defense_price = max(candidates) if candidates else target_buy_price * 0.92
+    else:
+        target_buy_price = None
+        defense_price = None
+        logger.warning(f"[{company}] price data missing; skip price target")
+
+    if state is not None:
+        state["price_data"] = {
+            "current_price": current_price,
+            "target_buy_price": target_buy_price,
+            "defense_price": defense_price,
+        }
+
+    return current_price, target_buy_price, defense_price
+
+
+def run_price_step(acc_data, company: str, state: ReportState | None = None):
+    set_report_step(state, "price")
+    return calculate_price_targets(acc_data, company, state=state)
+
+
+def run_final_analysis_step(
+    analyst_agent,
+    ana_tasks,
+    company: str,
+    acc_data,
+    macro_json,
+    research_json,
+    youtube_json,
+    final_opinion: str,
+    target_buy_price,
+    defense_price,
+    state: ReportState | None = None,
+):
+    set_report_step(state, "analysis")
+    analysis_inputs = compact_analysis_inputs(
+        acc_data=acc_data,
+        macro_json=macro_json,
+        research_json=research_json,
+        youtube_json=youtube_json,
+    )
+
+    task_analysis = ana_tasks.report_writing_task(
+        agent=analyst_agent,
+        company_name=company,
+        accounting_data=analysis_inputs["accounting"],
+        macro_data=analysis_inputs["macro"],
+        news_data=analysis_inputs["research"],
+        youtube_data=analysis_inputs["youtube"],
+        final_opinion=final_opinion,
+        target_buy_price=target_buy_price,
+        defense_price=defense_price,
+    )
+
+    analysis_crew = Crew(
+        agents=[analyst_agent],
+        tasks=[task_analysis],
+        process=Process.sequential,
+        verbose=False,
+        cache=False,
+    )
+
+    logger.debug(f"?傭?[{company}] ?꿔꺂????쭍?瑜귣젺???잙갭큔?됥깾爾?????꾩룆???嚥?..")
+    return safe_kickoff(analysis_crew, f"{company} Analysis Crew")
+
+
+def render_markdown_report(
+    ticker: str,
+    company: str,
+    final_opinion: str,
+    final_result,
+    current_price,
+    target_buy_price,
+    defense_price,
+    state: ReportState | None = None,
+):
+    set_report_step(state, "render_report")
+    report_data = final_result.pydantic
+    chart_json = final_result.pydantic.model_dump_json(
+        include={"chart_data"},
+        indent=2,
+    )
+
+    price_unit = get_price_unit(ticker)
+    current_price_text = format_price(current_price, price_unit)
+    target_buy_price_text = format_price(target_buy_price, price_unit)
+    defense_price_text = format_price(defense_price, price_unit)
+
+    if final_opinion in ["Strong Buy", "Buy"]:
+        buy_comment = "buy with appropriate position sizing"
+    elif final_opinion == "Hold":
+        buy_comment = "???援온?????????⑤슢???? ???뚯???"
+    else:
+        buy_comment = "new buy not recommended"
+
+    md_report = f"""# ???{company} ??癲?????????썹땟????잙갭큔?됥깾爾??
+| ???????| ??醫딆쓧????癲ル슢???ъ쒜?| ?????????ъ맓 |
 | :--- | :--- | :--- |
-| **현재가** | **{current_price_text}** | **{report_data.investment_opinion}** |
-| **권장 매수가** | **{target_buy_price_text}** | {buy_comment} |
-| **하락 시 방어선/저항선** | **{defense_price_text}** | 분할 매수/대응 |
+| **????썹땟??됰챶夷???쎛** | **{current_price_text}** | **{report_data.investment_opinion}** |
+| **???????꿔꺂?????釉랃폎??** | **{target_buy_price_text}** | {buy_comment} |
+| **?????????熬곣뫖?삥납??關?????????* | **{defense_price_text}** | ???곗뒩泳???꿔꺂?????????|
 
-### 💡 수석 애널리스트 한 줄 결론
+### ?????嶺뚮슣堉?쭕?????ル뒆???잙갭큔?딆뼍吏????嚥??嚥▲굧????덈춣?
 > **{report_data.one_line_conclusion}**
 
-### 🎯 3줄 요약 (Executive Summary)
+### ???3嚥????됰Ŋ???(Executive Summary)
 """
 
-                for line in report_data.executive_summary:
-                    md_report += f"- {line}\n"
+    for line in report_data.executive_summary:
+        md_report += f"- {line}\n"
 
-                md_report += f"""
+    md_report += f"""
 ---
 
-## 1. 🌍 매크로 및 시장 환경
+## 1. ????꿔꺂????關臾쇘춯癒?돵??????嶺뚮??ｆ쾮??????ъ졒
 {report_data.macro_analysis}
 
-## 2. 📊 펀더멘털 및 퀀트 분석
+## 2. ????????됰Ŧ?????????????곗뒩泳??
 {report_data.fundamental_analysis}
 
-## 3. 📰 비즈니스 모멘텀 (최신 뉴스)
+## 3. ???????猷몄쑛????⑤벡由??꿔꺂??袁ㅻ븶?癲?? (?꿔꺂????쭍??????ㅿ폍筌?
 {report_data.momentum_analysis}
 
-## 4. 📺 구루의 시선 (주알홍쌤 인사이트)
+## 4. ?????????????嶺?筌?(???녿뮝?????????諛멸퐪 ?癲ル슢??????ш끽維??
 {report_data.guru_analysis}
 
-## 5. 💡 수석 애널리스트 종합 결론
+## 5. ?????嶺뚮슣堉?쭕?????ル뒆???잙갭큔?딆뼍吏??????띻샷??? ?嚥▲굧????덈춣?
 {report_data.final_conclusion}
 
 ---
 
-## 📎 실적 차트 데이터
-"""
+## ??????繹먮냱諭??꿔꺂?볟젆怨곷븶???????????"""
 
-                md_report += "```json\n"
-                md_report += chart_json
-                md_report += "\n```\n"
+    md_report += "```json\n"
+    md_report += chart_json
+    md_report += "\n```\n"
 
-                all_reports.append({
-                    "ticker": ticker,
-                    "company": company,
-                    "status": "SUCCESS",
-                    "report": md_report,
-                })
-                logger.info(f"✅ [{company}] 리포트 생성 및 렌더링 완료")
+    if state is not None:
+        state["chart_data"] = final_result.pydantic.model_dump(
+            include={"chart_data"},
+            mode="json",
+        )
+        state["final_report"] = {
+            "investment_opinion": report_data.investment_opinion,
+            "one_line_conclusion": report_data.one_line_conclusion,
+            "markdown": md_report,
+        }
+        state["status"] = "report_generated"
 
-            else:
-                fallback_report = f"📈 [{company}]\n{final_result.raw}"
+    return md_report
 
-                all_reports.append({
-                    "ticker": ticker,
-                    "company": company,
-                    "status": "FAILED",
-                    "report": fallback_report,
-                })
-                logger.error(f"❌ [{company}] Analysis 에이전트 구조화 파싱 실패")
-        except Exception as e:
-            msg = f"❌ [종목 분석 실패] {company} ({ticker}) 예외 발생: {e}"
-            logger.exception(msg)
-            all_reports.append({
-                "ticker": ticker,
-                "company": company,
-                "status": "FAILED",
-                "report": msg,
-            })
-            continue
+
+def build_run_summary_output(macro_json, all_reports):
     now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    summary_output = f"> **최근 업데이트 일시:** {now_text}\n\n"
+    summary_output = f"> **?꿔꺂????쭍???????욍걛???ш끽維????濚밸Ŧ援앾쭛?** {now_text}\n\n"
     summary_output += "<!-- MACRO_DATA\n"
     summary_output += macro_json
     summary_output += "\n-->\n\n"
@@ -1037,65 +940,287 @@ def run_financial_crew(stock_pool=None):
             summary_cards.append(extract_report_summary(item.get("report", "")))
         else:
             summary_cards.append(
-                f"# 📈 {item.get('company', 'N/A')} 심층 투자 전략 리포트\n\n"
-                f"> {item.get('report', '분석 실패')}"
+                f"# ???{item.get('company', 'N/A')} ??癲?????????썹땟????잙갭큔?됥깾爾??n\n"
+                f"> {item.get('report', '???곗뒩泳???????곌숯')}"
             )
 
     summary_output += "\n\n---\n\n".join(summary_cards)
+
+    return summary_output
+
+
+def build_output_report_item(state: ReportState):
+    final_report = state.get("final_report") or {}
+    report = final_report.get("markdown") or final_report.get("raw")
+
+    if report is None:
+        report = "\n".join(state.get("errors", [])) or "???곗뒩泳???????곌숯"
+
+    return {
+        "ticker": state.get("ticker"),
+        "company": state.get("company_name"),
+        "status": "SUCCESS" if state.get("status") in ["report_generated", "completed"] else "FAILED",
+        "report": report,
+    }
+
+
+def finalize_state(state: ReportState):
+    has_report = bool(state.get("final_report") or state.get("markdown_report"))
+
+    if state.get("status") == "failed":
+        return state
+
+    if has_report and state.get("summary_saved") is True:
+        state["status"] = "completed"
+    elif has_report:
+        state["status"] = "report_generated"
+    else:
+        state["status"] = "failed"
+
+    return state
+
+
+def build_failed_state(target, error):
+    if isinstance(target, dict):
+        ticker = target.get("ticker")
+        company_name = target.get("company_name") or target.get("company")
+    else:
+        ticker, company_name = target
+
+    state = create_initial_report_state(ticker, company_name)
+    state["status"] = "failed"
+    state["current_step"] = "failed"
+    state["summary_saved"] = False
+    state.setdefault("errors", []).append(str(error))
+    state["final_report"] = {
+        "raw": f"??[????띻샴?????곗뒩泳???????곌숯] {company_name} ({ticker}) ???繹먮굝???熬곣뫖利든뜏類ｋ렱?? {error}",
+    }
+    state["output_report"] = build_output_report_item(state)
+    return state
+
+
+def run_single_report_pipeline(
+    ticker,
+    company_name,
+    agents,
+    tasks,
+    macro_context,
+):
+    state = create_initial_report_state(ticker, company_name)
+
+    if macro_context.get("macro_data"):
+        state["macro_data"] = macro_context["macro_data"]
+
+    try:
+        logger.info(f"??????곗뒩泳????嶺뚮??ｆ뤃? {company_name} ({ticker})")
+
+        acc_data, failed_item = run_accounting_step(
+            agents["accounting"],
+            tasks["accounting"],
+            ticker,
+            company_name,
+            state=state,
+        )
+
+        if failed_item:
+            state["output_report"] = failed_item
+            return finalize_state(state)
+
+        logger.debug(f"???[{company_name}] ??잙갭큔??影?뽯눚??????????????볥궚??嚥?..")
+        research_result = run_research_step(
+            agents["research"],
+            tasks["research"],
+            company_name,
+            state=state,
+        )
+
+        logger.debug(f"???[{company_name}] ????ｋ뽫뜏???????????????볥궚??嚥?..")
+        youtube_result = run_youtube_rag_step(
+            agents["youtube"],
+            tasks["youtube"],
+            company_name,
+            state=state,
+        )
+
+        sentiment, research_json = parse_research_result(
+            research_result,
+            company_name,
+            state=state,
+        )
+
+        guru_score, guru_weight, youtube_json = parse_youtube_result(
+            youtube_result,
+            company_name,
+            state=state,
+        )
+
+        final_opinion = decide_final_opinion(
+            acc_data=acc_data,
+            macro_score=macro_context["macro_score"],
+            sentiment=sentiment,
+            guru_score=guru_score,
+            guru_weight=guru_weight,
+            company=company_name,
+            state=state,
+        )
+
+        current_price, target_buy_price, defense_price = run_price_step(
+            acc_data,
+            company_name,
+            state=state,
+        )
+
+        final_result = run_final_analysis_step(
+            analyst_agent=agents["analysis"],
+            ana_tasks=tasks["analysis"],
+            company=company_name,
+            acc_data=acc_data,
+            macro_json=macro_context["macro_json"],
+            research_json=research_json,
+            youtube_json=youtube_json,
+            final_opinion=final_opinion,
+            target_buy_price=target_buy_price,
+            defense_price=defense_price,
+            state=state,
+        )
+
+        if final_result.pydantic:
+            md_report = render_markdown_report(
+                ticker=ticker,
+                company=company_name,
+                final_opinion=final_opinion,
+                final_result=final_result,
+                current_price=current_price,
+                target_buy_price=target_buy_price,
+                defense_price=defense_price,
+                state=state,
+            )
+            state["output_report"] = {
+                "ticker": ticker,
+                "company": company_name,
+                "status": "SUCCESS",
+                "report": md_report,
+            }
+            logger.info(f"??[{company_name}] report generated")
+        else:
+            fallback_report = f"???[{company_name}]\n{final_result.raw}"
+            append_report_error(state, "Analysis ????????꾣뤃罐??????源?????????????곌숯")
+            state["status"] = "failed"
+            state["final_report"] = {
+                "raw": final_result.raw,
+                "markdown": fallback_report,
+            }
+            state["output_report"] = {
+                "ticker": ticker,
+                "company": company_name,
+                "status": "FAILED",
+                "report": fallback_report,
+            }
+            logger.error(f"??[{company_name}] Analysis ????????꾣뤃罐??????源?????????????곌숯")
+
+    except Exception as e:
+        msg = f"??[????띻샴?????곗뒩泳???????곌숯] {company_name} ({ticker}) ???繹먮굝???熬곣뫖利든뜏類ｋ렱?? {e}"
+        logger.exception(msg)
+        append_report_error(state, msg)
+        state["status"] = "failed"
+        state["summary_saved"] = False
+        state["final_report"] = {
+            "raw": msg,
+        }
+        state["output_report"] = {
+            "ticker": ticker,
+            "company": company_name,
+            "status": "FAILED",
+            "report": msg,
+        }
+
+    return finalize_state(state)
+
+
+def run_multiple_report_pipeline(targets, agents, tasks, macro_context):
+    results = []
+
+    for ticker, company_name in targets:
+        try:
+            state = run_single_report_pipeline(
+                ticker,
+                company_name,
+                agents,
+                tasks,
+                macro_context,
+            )
+        except Exception as e:
+            logger.exception(f"????띻샴??????????썹땟怨꼲????⑤슢?뽫뵓嫄붋???????곌숯: {company_name} ({ticker})")
+            state = build_failed_state((ticker, company_name), e)
+
+        results.append(state)
+
+    return results
+
+
+def run_financial_crew(stock_pool=None):
+    stock_pool = normalize_stock_pool(stock_pool)
+    openai_api_key = require_env("OPENAI_API_KEY")
+
+    # ????ㅿ폍筌???잙갭큔??影?뽯눚???곌퐷???????
+    require_env("SERPER_API_KEY")
+
+    fast_llm, fact_llm, smart_llm = create_llms(openai_api_key)
+    crew_components = create_crew_components(fast_llm, fact_llm, smart_llm)
+    agents = crew_components["agents"]
+    tasks = crew_components["tasks"]
+
+    # ---------------------------------------------------------
+    # 0. ????ｋ뽫뜏??DB ?????욍걛???ш끽維??
+    # ---------------------------------------------------------
+    update_youtube_vector_db()
+
+    # ---------------------------------------------------------
+    # 1. ?꿔꺂????關臾쇘춯癒?돵?????곗뒩泳??
+    # ---------------------------------------------------------
+    macro_state: ReportState = {
+        "status": "running",
+        "current_step": "macro",
+        "errors": [],
+    }
+    macro_score, macro_score_reasons, macro_json = run_macro_step(
+        agents["macro"],
+        tasks["macro"],
+        state=macro_state,
+    )
+
+    macro_context = {
+        "macro_data": macro_state.get("macro_data"),
+        "macro_score": macro_score,
+        "macro_score_reasons": macro_score_reasons,
+        "macro_json": macro_json,
+    }
+
+    logger.debug("report pipeline started")
+    report_states = run_multiple_report_pipeline(
+        stock_pool,
+        agents,
+        tasks,
+        macro_context,
+    )
+    all_reports = [
+        state.get("output_report") or build_output_report_item(state)
+        for state in report_states
+    ]
+    summary_output = build_run_summary_output(macro_json, all_reports)
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
         "summary": summary_output,
         "reports": all_reports,
+        "_report_states": report_states,
     }
-
-def save_report_files(output):
-    try:
-        result_date = output["date"]
-        result_dir = os.path.join("result", result_date)
-        os.makedirs(result_dir, exist_ok=True)
-
-        reports = output.get("reports", [])
-
-        logger.info(f"save_report_files input reports count: {len(reports)}")
-
-        # 1. 종목별 개별 파일 저장
-        for item in reports:
-            ticker = sanitize_filename(item["ticker"])
-            company = sanitize_filename(item["company"])
-
-            file_name = f"{company}_{ticker}.md"
-            file_path = os.path.join(result_dir, file_name)
-
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(item["report"])
-
-            logger.info(f"💾 종목별 리포트 저장 완료 → {file_path}")
-
-        # 2. 기존 개별 리포트와 이번 실행 결과를 합쳐 summary.md 생성
-        summary_file = os.path.join(result_dir, "summary.md")
-        summary_seed = build_summary_from_output_reports(output)
-        summary_content = build_merged_summary(result_dir, summary_seed)
-
-        with open(summary_file, "w", encoding="utf-8") as f:
-            f.write(summary_content)
-
-        logger.info(
-            f"💾 전체 요약 리포트 저장 완료 → {summary_file}, "
-            f"summary reports count={len(reports)}"
-        )
-
-        return result_dir
-
-    except Exception as e:
-        logger.exception(f"❌ 리포트 파일 저장 실패: {e}")
-        raise
 
 if __name__ == "__main__":
     output = run_financial_crew()
 
     logger.debug("=" * 60)
-    logger.debug("🏆 시스템 실행 완료")
+    logger.debug("report pipeline started")
     logger.debug("=" * 60)
 
     print(output["summary"])

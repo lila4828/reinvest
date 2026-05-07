@@ -63,5 +63,48 @@
       "005930.KS",
       "삼성전자"
     ]
+  },
+  {
+    "ticker": "TSLA",
+    "company": "테슬라",
+    "exchange": null,
+    "quote_type": "EQUITY",
+    "keywords": [
+      "TSLA",
+      "테슬라"
+    ]
+  },
+  {
+    "ticker": "064350.KS",
+    "company": "현대로템",
+    "exchange": "KOSPI",
+    "quote_type": "EQUITY",
+    "keywords": [
+      "064350.KS",
+      "현대로템",
+      "KOSPI"
+    ]
+  },
+  {
+    "ticker": "035900.KQ",
+    "company": "JYP Ent.",
+    "exchange": "KOSDAQ",
+    "quote_type": "EQUITY",
+    "keywords": [
+      "035900.KQ",
+      "JYP Ent.",
+      "KOSDAQ"
+    ]
+  },
+  {
+    "ticker": "181710.KS",
+    "company": "NHN",
+    "exchange": "KOSPI",
+    "quote_type": "EQUITY",
+    "keywords": [
+      "181710.KS",
+      "NHN",
+      "KOSPI"
+    ]
   }
 ]

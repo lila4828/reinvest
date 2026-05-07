@@ -1,17 +1,50 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 function getReportTitle(report) {
   if (!report) return '리포트';
 
   const displayName = report.display_name || report.filename || '개별 리포트';
+  const baseName = displayName.replace(/\.md$/i, '');
+  const separatorIndex = baseName.lastIndexOf('_');
 
-  return displayName
-    .replace(/\.md$/i, '')
+  if (separatorIndex > 0 && separatorIndex < baseName.length - 1) {
+    return baseName
+      .slice(0, separatorIndex)
+      .replace(/\([^)]*\)/g, '')
+      .replace(/_/g, ' ')
+      .trim();
+  }
+
+  return baseName
     .replace(/\([^)]*\)/g, '')
-    .replace(/_\d{6}\.KS$/i, '')
-    .replace(/_[A-Z.]+$/i, '')
     .replace(/_/g, ' ')
     .trim();
+}
+
+function getReportTicker(report) {
+  const source = report?.filename || report?.display_name || '';
+  const baseName = source.replace(/\.md$/i, '');
+  const separatorIndex = baseName.lastIndexOf('_');
+
+  if (separatorIndex <= 0 || separatorIndex >= baseName.length - 1) {
+    return '';
+  }
+
+  return baseName.slice(separatorIndex + 1).toUpperCase();
+}
+
+function getReportMarketLabel(report) {
+  if (report?.market_label) {
+    return report.market_label;
+  }
+
+  const ticker = getReportTicker(report);
+
+  if (ticker.endsWith('.KS')) return '코스피';
+  if (ticker.endsWith('.KQ')) return '코스닥';
+  if (ticker) return '미국';
+
+  return '';
 }
 
 function getSearchableStockName(report) {
@@ -21,6 +54,8 @@ function getSearchableStockName(report) {
     report.display_name,
     report.filename,
     getReportTitle(report),
+    report.exchange,
+    getReportMarketLabel(report),
   ]
     .filter(Boolean)
     .join(' ')
@@ -40,9 +75,19 @@ function groupReportsByDate(reports) {
   }, {});
 }
 
-function ReportList({ reports, isLoading, onReportClick, selectedReport = null }) {
-  const [stockKeyword, setStockKeyword] = useState('');
+function ReportList({
+  reports,
+  isLoading,
+  onReportClick,
+  selectedReport = null,
+  initialStockKeyword = '',
+}) {
+  const [stockKeyword, setStockKeyword] = useState(initialStockKeyword);
   const [selectedDate, setSelectedDate] = useState('');
+
+  useEffect(() => {
+    setStockKeyword(initialStockKeyword);
+  }, [initialStockKeyword]);
 
   const filteredReports = useMemo(() => {
     const normalizedStockKeyword = stockKeyword.trim().toLowerCase();
@@ -190,6 +235,7 @@ function ReportList({ reports, isLoading, onReportClick, selectedReport = null }
           <div className="report-list-scroll">
             {sortedReports.map((report, reportIndex) => {
               const title = getReportTitle(report);
+              const marketLabel = getReportMarketLabel(report);
 
               return (
                 <button
@@ -204,7 +250,14 @@ function ReportList({ reports, isLoading, onReportClick, selectedReport = null }
                   onClick={() => onReportClick(report)}
                 >
                   <span className="report-list-item-main">
-                    <span className="report-list-title">{title}</span>
+                    <span className="report-list-title">
+                      <span>{title}</span>
+                      {marketLabel && (
+                        <span className="report-list-market">
+                          {marketLabel}
+                        </span>
+                      )}
+                    </span>
                     <span className="report-list-date">{report.date || '날짜 없음'}</span>
                   </span>
 

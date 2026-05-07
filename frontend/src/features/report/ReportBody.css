@@ -206,11 +206,30 @@
 }
 
 .report-list-title {
+  display: inline-flex;
   min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 7px;
   overflow: hidden;
   font-weight: 900;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.report-list-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-list-market {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #eef4ff;
+  color: #0b5ed7;
+  font-size: 0.74rem;
+  font-weight: 900;
 }
 
 .report-list-date {

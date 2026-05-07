@@ -12,6 +12,7 @@ function ReportBody({ refreshKey = 0 }) {
     isLoadingList,
     isLoadingDetail,
     errorMsg,
+    stockKeywordParam,
     handleReportClick,
     handleBack
   } = useReports(refreshKey);
@@ -61,6 +62,7 @@ function ReportBody({ refreshKey = 0 }) {
             isLoading={isLoadingList}
             onReportClick={handleReportClick}
             selectedReport={selectedReport}
+            initialStockKeyword={stockKeywordParam}
           />
         </aside>
 

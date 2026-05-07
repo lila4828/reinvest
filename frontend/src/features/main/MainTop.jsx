@@ -259,11 +259,38 @@ function MainTop({ refreshKey = 0 }) {
       </h5>
 
       <div className="row g-2 macro-card-row">
-        <MacroCard title="환율" value={macroData.exchangeRate?.value} change={macroData.exchangeRate?.change} featured />
-        <MacroCard title="나스닥" value={macroData.nasdaq?.value} change={macroData.nasdaq?.change} />
-        <MacroCard title="미국 10년 국채" value={macroData.us10y?.value} change={macroData.us10y?.change} suffix="%" />
-        <MacroCard title="원유 가격(유가)" value={macroData.wti?.value} change={macroData.wti?.change} />
-        <MacroCard title="미국시장 공포지수" value={macroData.vix?.value} change={macroData.vix?.change} />
+        <MacroCard
+          title="환율"
+          value={macroData.exchangeRate?.value}
+          change={macroData.exchangeRate?.change}
+          href="https://www.tradingview.com/symbols/FX_IDC-USDKRW/"
+          featured
+        />
+        <MacroCard
+          title="나스닥"
+          value={macroData.nasdaq?.value}
+          change={macroData.nasdaq?.change}
+          href="https://www.tradingview.com/symbols/NASDAQ-IXIC/"
+        />
+        <MacroCard
+          title="미국 10년 국채"
+          value={macroData.us10y?.value}
+          change={macroData.us10y?.change}
+          suffix="%"
+          href="https://www.tradingview.com/symbols/TVC-US10Y/"
+        />
+        <MacroCard
+          title="원유 가격(유가)"
+          value={macroData.wti?.value}
+          change={macroData.wti?.change}
+          href="https://www.tradingview.com/symbols/NYMEX-CL1!/"
+        />
+        <MacroCard
+          title="미국시장 공포지수"
+          value={macroData.vix?.value}
+          change={macroData.vix?.change}
+          href="https://www.tradingview.com/symbols/TVC-VIX/"
+        />
       </div>
     </div>
   );

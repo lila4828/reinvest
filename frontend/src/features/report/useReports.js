@@ -21,6 +21,7 @@ export function useReports(refreshKey = 0) {
 
   const dateParam = searchParams.get('date');
   const filenameParam = searchParams.get('filename');
+  const stockKeywordParam = searchParams.get('q') || '';
 
   useEffect(() => {
     setIsLoadingList(true);
@@ -103,14 +104,25 @@ export function useReports(refreshKey = 0) {
   const handleReportClick = (report) => {
     if (!report?.date || !report?.filename) return;
 
-    setSearchParams({
+    const nextParams = {
       date: report.date,
       filename: report.filename,
-    });
+    };
+
+    if (stockKeywordParam) {
+      nextParams.q = stockKeywordParam;
+    }
+
+    setSearchParams(nextParams);
   };
 
   const handleBack = () => {
-    setSearchParams({});
+    if (stockKeywordParam) {
+      setSearchParams({ q: stockKeywordParam });
+    } else {
+      setSearchParams({});
+    }
+
     setSelectedReport(null);
     setErrorMsg('');
     setReportContent('');
@@ -123,6 +135,7 @@ export function useReports(refreshKey = 0) {
     isLoadingList,
     isLoadingDetail,
     errorMsg,
+    stockKeywordParam,
     handleReportClick,
     handleBack,
   };

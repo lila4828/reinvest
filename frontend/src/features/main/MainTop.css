@@ -18,6 +18,23 @@
   padding: 14px 16px;
 }
 
+.macro-card-link {
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.macro-card-link:hover {
+  color: inherit;
+  transform: translateY(-1px);
+  box-shadow: 0 0.35rem 1rem rgba(13, 110, 253, 0.14) !important;
+}
+
+.macro-card-link:focus-visible {
+  outline: 3px solid rgba(13, 110, 253, 0.25);
+  outline-offset: 2px;
+}
+
 .macro-card-title {
   font-size: 0.82rem;
   white-space: nowrap;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './MainBody.css';
@@ -46,6 +47,23 @@ function getTodayDateText() {
   const day = String(now.getDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
+}
+
+function getReportDetailPath(report) {
+  if (!report?.date || !report?.filename) {
+    return '/report';
+  }
+
+  const params = new URLSearchParams({
+    date: report.date,
+    filename: report.filename,
+  });
+
+  if (report.companyName) {
+    params.set('q', report.companyName);
+  }
+
+  return `/report?${params.toString()}`;
 }
 
 function parseReportsFromMarkdown(content) {
@@ -473,6 +491,14 @@ function MainBody({
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {selectedReport?.mdContent || ''}
         </ReactMarkdown>
+        <div className="report-more-actions">
+          <Link
+            to={getReportDetailPath(selectedReport)}
+            className="btn btn-sm btn-primary report-more-button"
+          >
+            더보기
+          </Link>
+        </div>
       </div>
     </>
   );

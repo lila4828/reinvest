@@ -1,6 +1,6 @@
 import React from 'react';
 
-function MacroCard({ title, value, change, suffix = '', featured = false }) {
+function MacroCard({ title, value, change, suffix = '', featured = false, href }) {
   const rawChange = typeof change === 'string' ? change.trim() : 'N/A';
   const hasValidChange = rawChange && rawChange !== 'N/A';
 
@@ -11,10 +11,17 @@ function MacroCard({ title, value, change, suffix = '', featured = false }) {
   const changeArrow = isNegative ? '▼' : isPositive ? '▲' : '';
 
   const displayChange = hasValidChange ? rawChange.replace('-', '') : 'N/A';
+  const CardTag = href ? 'a' : 'div';
 
   return (
     <div className={`col-6 col-lg macro-card-col ${featured ? 'macro-card-featured' : ''}`}>
-      <div className="card macro-card h-100 border-0 shadow-sm">
+      <CardTag
+        className={`card macro-card h-100 border-0 shadow-sm ${href ? 'macro-card-link' : ''}`}
+        href={href}
+        target={href ? '_blank' : undefined}
+        rel={href ? 'noreferrer' : undefined}
+        title={href ? `${title} 상세 차트 보기` : undefined}
+      >
         <div className="card-body macro-card-body">
           <div className="text-muted mb-1 macro-card-title">
             {title}
@@ -43,7 +50,7 @@ function MacroCard({ title, value, change, suffix = '', featured = false }) {
             )}
           </div>
         </div>
-      </div>
+      </CardTag>
     </div>
   );
 }

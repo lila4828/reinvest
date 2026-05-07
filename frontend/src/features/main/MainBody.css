@@ -44,10 +44,19 @@
   margin-bottom: 18px;
 }
 
+.report-more-button,
 .report-today-create-button {
   flex: 0 0 auto;
   white-space: nowrap;
   font-weight: 800;
+}
+
+.report-more-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e9ecef;
 }
 
 .report-selector-toolbar {
@@ -403,6 +412,14 @@
   .report-today-create-button {
     width: 100%;
     margin-top: 10px;
+  }
+
+  .report-more-actions {
+    display: block;
+  }
+
+  .report-more-button {
+    width: 100%;
   }
 
   .report-selector-toolbar {

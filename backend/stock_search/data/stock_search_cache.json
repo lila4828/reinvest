@@ -53,5 +53,15 @@
       "한화오션",
       "KOSPI"
     ]
+  },
+  {
+    "ticker": "005930.KS",
+    "company": "삼성전자",
+    "exchange": null,
+    "quote_type": "EQUITY",
+    "keywords": [
+      "005930.KS",
+      "삼성전자"
+    ]
   }
 ]

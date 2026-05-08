@@ -6,6 +6,62 @@ import './MainBody.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const FAVORITES_STORAGE_KEY = 'ai-reinvest-main-report-favorites';
+const STEP_LABELS = {
+  initialized: '준비 중',
+  pending: '대기 중',
+  validate_input: '입력 확인 중',
+  macro: '매크로 분석 중',
+  accounting: '재무 분석 중',
+  research: '뉴스 분석 중',
+  youtube_rag: '유튜브 인사이트 검색 중',
+  price: '가격 기준 계산 중',
+  analysis: '리포트 작성 중',
+  report_save: '리포트 저장 중',
+  summary_save: '최종 반영 중',
+  report_generated: '리포트 생성 완료',
+  completed: '완료',
+  success: '완료',
+  failed: '실패',
+  partial_failed: '일부 실패',
+};
+
+function getFriendlyStepLabel(step, status) {
+  if (status === 'success') return STEP_LABELS.completed;
+  if (status === 'failed') return STEP_LABELS.failed;
+  return STEP_LABELS[step] || STEP_LABELS[status] || '진행 중';
+}
+
+function getTargetStatusClassName(status) {
+  if (status === 'completed' || status === 'success') return 'status-success';
+  if (status === 'failed' || status === 'partial_failed') return 'status-failed';
+  return 'status-running';
+}
+
+function summarizeTargetError(errors) {
+  const text = Array.isArray(errors) ? errors.join(' / ') : String(errors || '');
+  return text.length > 80 ? `${text.slice(0, 80)}...` : text;
+}
+
+function isTerminalTarget(item) {
+  return ['completed', 'success', 'failed', 'partial_failed'].includes(item.status);
+}
+
+function isCommonMacroActive(items = []) {
+  return items.some((item) => item.current_step === 'macro' && !isTerminalTarget(item));
+}
+
+function getDisplayTargetItems(items = []) {
+  return items.map((item) => {
+    if (item.current_step !== 'macro' || isTerminalTarget(item)) {
+      return item;
+    }
+
+    return {
+      ...item,
+      current_step: 'pending',
+    };
+  });
+}
 const OPINION_FILTERS = ['Strong Buy', 'Buy', 'Hold', 'Sell', '분석 중단'];
 
 function parseReportMetaFromFilename(filename) {
@@ -128,6 +184,7 @@ function MainBody({
   sideContent = null,
   onStartReportJob,
   isReportWorking = false,
+  reportTargetsStatus = [],
 }) {
   const [reports, setReports] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -304,6 +361,8 @@ function MainBody({
   const selectedReportKey = selectedReport?.companyName || '';
   const todayDateText = getTodayDateText();
   const hasTodaySelectedReport = selectedReport?.date === todayDateText;
+  const commonMacroActive = isCommonMacroActive(reportTargetsStatus);
+  const displayReportTargetsStatus = getDisplayTargetItems(reportTargetsStatus);
   const normalizedKeyword = searchKeyword.trim().toLowerCase();
   const favoriteSet = new Set(favoriteReports);
   const filteredReports = reports

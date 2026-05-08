@@ -105,56 +105,6 @@
   transition: width 0.4s ease;
 }
 
-.report-progress-steps {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.report-progress-step {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 8px;
-  color: #6c757d;
-}
-
-.report-progress-step > span {
-  width: 12px;
-  height: 12px;
-  margin-top: 4px;
-  border: 2px solid #b8c4d6;
-  border-radius: 999px;
-  background: #ffffff;
-}
-
-.report-progress-step strong {
-  display: block;
-  color: #495057;
-  font-size: 0.86rem;
-}
-
-.report-progress-step p {
-  margin: 2px 0 0;
-  font-size: 0.78rem;
-  line-height: 1.35;
-}
-
-.report-progress-step.active > span {
-  border-color: #0d6efd;
-  background: #0d6efd;
-  box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.12);
-}
-
-.report-progress-step.active strong {
-  color: #0d6efd;
-}
-
-.report-progress-step.complete > span {
-  border-color: #198754;
-  background: #198754;
-}
-
 .report-progress-panel.status-success {
   border-color: #badbcc;
   background: #f4fbf7;
@@ -167,12 +117,6 @@
 
 .report-progress-panel.status-failed .report-progress-bar {
   background: #dc3545;
-}
-
-@media (max-width: 768px) {
-  .report-progress-steps {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ---------------------------------------------------------
@@ -275,6 +219,63 @@
   background: #fff0f1;
   color: #b02a37;
   line-height: 1.45;
+}
+
+.report-common-step {
+  margin-top: 12px;
+  border: 1px solid #cfe2ff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f2f7ff;
+  color: #0b5ed7;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.report-target-status-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.report-target-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f8f9fa;
+}
+
+.report-target-status-row.status-success {
+  border-color: #badbcc;
+  background: #f0fff6;
+}
+
+.report-target-status-row.status-failed {
+  border-color: #f1aeb5;
+  background: #fff5f5;
+}
+
+.report-target-status-name,
+.report-target-status-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-target-status-name {
+  color: #212529;
+  font-weight: 800;
+}
+
+.report-target-status-step {
+  color: #495057;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .report-progress-toast.status-success .report-toast-percent {

@@ -36,6 +36,7 @@ class ReportState(TypedDict, total=False):
     summary_header: Optional[str]
 
     errors: list[str]
+    status_callback: Optional[Any]
 
 
 def create_initial_report_state(ticker: str, company_name: str) -> ReportState:

@@ -13,6 +13,129 @@ import Report from '../report/Report';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+const STEP_LABELS = {
+  initialized: '준비 중',
+  pending: '대기 중',
+  validate_input: '입력 확인 중',
+  macro: '매크로 분석 중',
+  accounting: '재무 분석 중',
+  research: '뉴스 분석 중',
+  youtube_rag: '유튜브 인사이트 검색 중',
+  price: '가격 기준 계산 중',
+  analysis: '리포트 작성 중',
+  report_save: '리포트 저장 중',
+  summary_save: '최종 반영 중',
+  report_generated: '리포트 생성 완료',
+  completed: '완료',
+  success: '완료',
+  failed: '실패',
+  partial_failed: '일부 실패',
+};
+
+function getFriendlyStepLabel(step, status) {
+  if (status === 'success') return STEP_LABELS.completed;
+  if (status === 'failed') return STEP_LABELS.failed;
+  return STEP_LABELS[step] || STEP_LABELS[status] || '진행 중';
+}
+
+function summarizeError(error) {
+  if (!error) return '';
+
+  const text = Array.isArray(error) ? error.join(' / ') : String(error);
+  return text.length > 72 ? `${text.slice(0, 72)}...` : text;
+}
+
+function normalizeTargetStatusItems(items = [], fallbackStatus = 'pending') {
+  return (items || []).map((item) => {
+    const status = item.status || fallbackStatus;
+    const currentStep = item.current_step || status || 'pending';
+
+    return {
+      ticker: item.ticker || '',
+      company_name: item.company_name || item.company || item.name || item.ticker || '종목',
+      status,
+      current_step: currentStep,
+      label: getFriendlyStepLabel(currentStep, status),
+      errors: item.errors || (item.error ? [item.error] : []),
+      summary_saved: Boolean(item.summary_saved),
+    };
+  });
+}
+
+function buildPendingTargetsFromStocks(stocks = []) {
+  return normalizeTargetStatusItems(
+    stocks.map((stock) => ({
+      ticker: stock.ticker,
+      company_name: stock.company || stock.company_name,
+      status: 'pending',
+      current_step: 'pending',
+      errors: [],
+      summary_saved: false,
+    })),
+  );
+}
+
+function hasFailedTarget(items = []) {
+  return items.some((item) => ['failed', 'partial_failed'].includes(item.status));
+}
+
+function isTerminalTarget(item) {
+  return ['completed', 'success', 'failed', 'partial_failed'].includes(item.status);
+}
+
+function isCommonMacroActive(items = []) {
+  const activeItems = items.filter((item) => !isTerminalTarget(item));
+  const preStockSteps = new Set(['initialized', 'pending', 'validate_input', 'macro']);
+
+  return (
+    activeItems.some((item) => item.current_step === 'macro') &&
+    activeItems.every((item) => preStockSteps.has(item.current_step || 'pending'))
+  );
+}
+
+function getDisplayTargetItems(items = []) {
+  return items.map((item) => {
+    if (item.current_step !== 'macro' || isTerminalTarget(item)) {
+      return item;
+    }
+
+    return {
+      ...item,
+      label: STEP_LABELS.pending,
+    };
+  });
+}
+
+const STOCK_STEP_PROGRESS = {
+  pending: 0,
+  initialized: 0,
+  validate_input: 0,
+  macro: 0,
+  accounting: 25,
+  research: 50,
+  youtube_rag: 70,
+  price: 75,
+  analysis: 85,
+  report_generated: 90,
+  report_save: 95,
+  summary_save: 98,
+  completed: 100,
+  success: 100,
+  failed: 100,
+  partial_failed: 100,
+};
+
+function getStockStepProgress(item) {
+  const step = item.current_step || item.status || 'pending';
+  return STOCK_STEP_PROGRESS[step] ?? STOCK_STEP_PROGRESS[item.status] ?? 0;
+}
+
+function isFinishingReports(items = []) {
+  return items.some((item) =>
+    ['report_generated', 'report_save', 'summary_save'].includes(item.current_step),
+  );
+}
+
 const JOB_STEPS = [
   {
     key: 'queued',
@@ -36,23 +159,28 @@ const JOB_STEPS = [
   },
 ];
 
-function getProgress(status, pollCount) {
+function getProgress(status, pollCount, targetItems = []) {
   if (status === 'success') return 100;
   if (status === 'failed') return 100;
-  if (status === 'pending') return 18;
-  if (status === 'running') return Math.min(88, 35 + pollCount * 6);
+  if (status === 'pending') return 5;
+
+  const items = targetItems || [];
+
+  if (status === 'running' && items.length > 0) {
+    if (items.every((item) => isTerminalTarget(item))) return 100;
+
+    if (isCommonMacroActive(items)) return 10;
+
+    const averageStockProgress =
+      items.reduce((sum, item) => sum + getStockStepProgress(item), 0) / items.length;
+    const progress = 20 + averageStockProgress * 0.8;
+
+    return Math.max(20, Math.min(99, Math.round(progress)));
+  }
+
+  if (status === 'running') return Math.min(20, 10 + pollCount * 2);
 
   return 0;
-}
-
-function getActiveStep(status, progress) {
-  if (status === 'success') return 'done';
-  if (status === 'failed') return 'writing';
-  if (status === 'pending') return 'queued';
-  if (status === 'running' && progress >= 62) return 'writing';
-  if (status === 'running') return 'collecting';
-
-  return '';
 }
 
 function getStepClassName(step, activeStep, status) {
@@ -74,8 +202,8 @@ function ReportProgressToast({
   message,
   jobId,
   progress,
-  activeStep,
   error,
+  targetItems = [],
   onDismiss,
 }) {
   const title =
@@ -85,20 +213,51 @@ function ReportProgressToast({
         ? '리포트 생성 실패'
         : 'AI 리포트 생성 중';
 
+  const hasPartialFailure = status === 'success' && hasFailedTarget(targetItems);
+  const commonMacroActive = isCommonMacroActive(targetItems);
+  const finishingReports = isFinishingReports(targetItems);
+  const displayTargetItems = getDisplayTargetItems(targetItems);
+  const displayTitle =
+    status === 'success'
+      ? hasPartialFailure
+        ? '리포트 생성 일부 실패'
+        : '리포트 생성 완료'
+      : status === 'failed'
+        ? '리포트 생성 실패'
+        : '리포트 생성 중';
+
+  const finalTitle =
+    status === 'success'
+      ? hasPartialFailure
+        ? '리포트 생성 일부 실패'
+        : '리포트 생성 완료'
+      : status === 'failed'
+        ? '리포트 생성 실패'
+        : finishingReports
+          ? 'AI 리포트 마무리 중'
+          : 'AI 리포트 분석 중';
+  const finalMessage =
+    status === 'success'
+      ? hasPartialFailure
+        ? '일부 종목 분석 중 문제가 발생했습니다.'
+        : '최신 리포트가 화면에 반영되었습니다.'
+      : status === 'failed'
+        ? '분석 중 문제가 발생했습니다.'
+        : commonMacroActive
+          ? '공통 매크로 분석을 진행 중입니다. 종목별 분석은 이후 순차적으로 시작됩니다.'
+          : finishingReports
+            ? '리포트를 저장하고 화면에 반영하는 중입니다.'
+            : 'AI가 종목별 데이터를 분석하고 있습니다. 아래 종목별 진행 상태를 확인해주세요.';
+
   return (
     <div className={`report-progress-panel report-progress-toast status-${status || 'pending'}`}>
       <div className="report-progress-header">
         <div className="report-toast-main">
-          <strong className="report-toast-title">{title}</strong>
+          <strong className="report-toast-title">{finalTitle || displayTitle || title}</strong>
           <div className="report-toast-message">
-            {message || '리포트 생성 상태를 확인 중입니다.'}
+            {finalMessage || message}
           </div>
 
-          {jobId && (
-            <div className="report-progress-job small text-muted">
-              Job ID: {jobId}
-            </div>
-          )}
         </div>
 
         <div className="report-toast-actions">
@@ -124,20 +283,34 @@ function ReportProgressToast({
         />
       </div>
 
-      <div className="report-progress-steps">
-        {JOB_STEPS.map((step) => (
-          <div
-            key={step.key}
-            className={getStepClassName(step, activeStep, status)}
-          >
-            <span />
-            <div>
-              <strong>{step.label}</strong>
-              <p>{step.description}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      {commonMacroActive && (
+        <div className="report-common-step">
+          공통 매크로 분석 중
+        </div>
+      )}
+
+      {displayTargetItems.length > 0 && (
+        <div className="report-target-status-list">
+          {displayTargetItems.map((item) => {
+            const rowStatus =
+              item.status === 'completed' || item.status === 'success'
+                ? 'success'
+                : item.status === 'failed' || item.status === 'partial_failed'
+                  ? 'failed'
+                  : 'running';
+
+            return (
+              <div
+                className={`report-target-status-row status-${rowStatus}`}
+                key={`${item.ticker || item.company_name}-${item.company_name}`}
+              >
+                <span className="report-target-status-name">{item.company_name}</span>
+                <span className="report-target-status-step">{item.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {error && (
         <div className="report-toast-error small">
@@ -205,6 +378,7 @@ function App() {
   const [reportJobId, setReportJobId] = useState('');
   const [reportJobStatus, setReportJobStatus] = useState('');
   const [reportStatusMessage, setReportStatusMessage] = useState('');
+  const [reportTargetsStatus, setReportTargetsStatus] = useState([]);
   const [isReportSubmitting, setIsReportSubmitting] = useState(false);
 
   const pollingTimerRef = useRef(null);
@@ -236,6 +410,7 @@ function App() {
     currentJobId,
     error,
     pollCountValue,
+    targetItems,
   }) => {
     const safeStatus = status || 'pending';
     const safePollCount =
@@ -243,9 +418,7 @@ function App() {
         ? pollCountValue
         : pollCountRef.current;
 
-    const progress = getProgress(safeStatus, safePollCount);
-    const activeStep = getActiveStep(safeStatus, progress);
-
+    const progress = getProgress(safeStatus, safePollCount, targetItems || reportTargetsStatus);
     const toastId =
       reportToastIdRef.current ||
       `report-progress-${currentJobId || Date.now()}`;
@@ -258,8 +431,8 @@ function App() {
         message={message}
         jobId={currentJobId}
         progress={progress}
-        activeStep={activeStep}
-        error={error}
+        error={summarizeError(error)}
+        targetItems={targetItems || reportTargetsStatus}
         onDismiss={() => {
           toast.dismiss(toastId);
 
@@ -270,7 +443,7 @@ function App() {
       />,
       {
         id: toastId,
-        duration: safeStatus === 'success' ? 5000 : Infinity,
+        duration: safeStatus === 'success' || safeStatus === 'failed' ? 5000 : Infinity,
         removeDelay: 500,
         ariaProps: {
           role: 'status',
@@ -293,7 +466,13 @@ function App() {
         throw new Error(data.detail || '작업 상태를 확인하지 못했습니다.');
       }
 
+      const targetItems = normalizeTargetStatusItems(
+        data.targets_status || data.report_states || data.items || data.stocks || [],
+        data.status,
+      );
+
       setReportJobStatus(data.status);
+      setReportTargetsStatus(targetItems);
 
       if (data.status === 'pending') {
         const message = '리포트 생성 요청을 접수했습니다.';
@@ -305,6 +484,7 @@ function App() {
           message,
           currentJobId: targetJobId,
           pollCountValue: pollCountRef.current,
+          targetItems,
         });
 
         return;
@@ -322,6 +502,7 @@ function App() {
           message,
           currentJobId: targetJobId,
           pollCountValue: nextPollCount,
+          targetItems,
         });
 
         return;
@@ -339,6 +520,7 @@ function App() {
           message,
           currentJobId: targetJobId,
           pollCountValue: pollCountRef.current,
+          targetItems,
         });
 
         setReportRefreshKey((prev) => prev + 1);
@@ -359,6 +541,7 @@ function App() {
           currentJobId: targetJobId,
           error: message,
           pollCountValue: pollCountRef.current,
+          targetItems,
         });
       }
     } catch (error) {
@@ -403,16 +586,19 @@ function App() {
     dismissReportToast();
 
     pollCountRef.current = 0;
+    const initialTargetItems = buildPendingTargetsFromStocks(stocks);
 
     setIsReportSubmitting(true);
     setReportJobId('');
     setReportJobStatus('');
+    setReportTargetsStatus(initialTargetItems);
     setReportStatusMessage('리포트 생성 요청을 보내는 중입니다.');
 
     showReportToast({
       status: 'pending',
       message: `${stocks.length}개 종목 리포트 생성 요청을 보내는 중입니다.`,
       pollCountValue: 0,
+      targetItems: initialTargetItems,
     });
 
     try {
@@ -444,12 +630,14 @@ function App() {
       setReportJobId(data.job_id);
       setReportJobStatus(nextStatus);
       setReportStatusMessage(message);
+      setReportTargetsStatus(initialTargetItems);
 
       showReportToast({
         status: nextStatus,
         message,
         currentJobId: data.job_id,
         pollCountValue: 0,
+        targetItems: initialTargetItems,
       });
 
       startReportPolling(data.job_id);
@@ -459,12 +647,21 @@ function App() {
       setIsReportSubmitting(false);
       setReportJobStatus('failed');
       setReportStatusMessage('');
+      const failedTargetItems = initialTargetItems.map((item) => ({
+        ...item,
+        status: 'failed',
+        current_step: 'failed',
+        label: getFriendlyStepLabel('failed', 'failed'),
+        errors: [error.message],
+      }));
+      setReportTargetsStatus(failedTargetItems);
 
       showReportToast({
         status: 'failed',
         message: '리포트 생성 요청에 실패했습니다.',
         error: error.message,
         pollCountValue: 0,
+        targetItems: failedTargetItems,
       });
 
       throw error;
@@ -568,6 +765,7 @@ function App() {
                   isReportWorking={isReportWorking}
                   reportJobStatus={reportJobStatus}
                   reportStatusMessage={reportStatusMessage}
+                  reportTargetsStatus={reportTargetsStatus}
                 />
               }
             />

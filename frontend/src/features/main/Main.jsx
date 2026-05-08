@@ -9,6 +9,7 @@ function Main({
   isReportWorking = false,
   reportJobStatus = '',
   reportStatusMessage = '',
+  reportTargetsStatus = [],
 }) {
   return (
     <div className="container main-page-container mt-4">
@@ -18,6 +19,7 @@ function Main({
         refreshKey={reportRefreshKey}
         onStartReportJob={onStartReportJob}
         isReportWorking={isReportWorking}
+        reportTargetsStatus={reportTargetsStatus}
         sideContent={
           <ReportGenerator
             onStartReportJob={onStartReportJob}

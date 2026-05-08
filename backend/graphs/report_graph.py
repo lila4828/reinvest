@@ -13,6 +13,29 @@ def append_graph_error(state: ReportState, message: str):
     state.setdefault("errors", []).append(message)
 
 
+def notify_status(state: ReportState):
+    status_callback = state.get("status_callback")
+
+    if not callable(status_callback):
+        return
+
+    try:
+        status_callback(state)
+    except Exception as e:
+        logger.warning("report status callback failed: %s", e)
+
+
+def with_status_updates(step_name, node_func):
+    def wrapped_node(state: ReportState):
+        state["current_step"] = step_name
+        notify_status(state)
+        next_state = node_func(state)
+        notify_status(next_state)
+        return next_state
+
+    return wrapped_node
+
+
 def validate_input_node(state: ReportState):
     ticker = str(state.get("ticker") or "").strip()
     company_name = str(state.get("company_name") or "").strip()
@@ -328,15 +351,15 @@ def should_continue(state: ReportState):
 def build_report_graph():
     graph = StateGraph(ReportState)
 
-    graph.add_node("validate_input", validate_input_node)
-    graph.add_node("macro", macro_node)
-    graph.add_node("accounting", accounting_node)
-    graph.add_node("research", research_node)
-    graph.add_node("youtube_rag", youtube_rag_node)
-    graph.add_node("price", price_node)
-    graph.add_node("analysis", analysis_node)
-    graph.add_node("save_summary", save_summary_node)
-    graph.add_node("finalize", finalize_node)
+    graph.add_node("validate_input", with_status_updates("validate_input", validate_input_node))
+    graph.add_node("macro", with_status_updates("macro", macro_node))
+    graph.add_node("accounting", with_status_updates("accounting", accounting_node))
+    graph.add_node("research", with_status_updates("research", research_node))
+    graph.add_node("youtube_rag", with_status_updates("youtube_rag", youtube_rag_node))
+    graph.add_node("price", with_status_updates("price", price_node))
+    graph.add_node("analysis", with_status_updates("analysis", analysis_node))
+    graph.add_node("save_summary", with_status_updates("summary_save", save_summary_node))
+    graph.add_node("finalize", with_status_updates("completed", finalize_node))
 
     graph.set_entry_point("validate_input")
     graph.add_conditional_edges(
@@ -387,6 +410,7 @@ def cleanup_runtime_fields(state: ReportState):
     for key in [
         "agents",
         "tasks",
+        "status_callback",
         "research_result",
         "youtube_result",
     ]:
@@ -399,7 +423,7 @@ def run_report_graph(state: ReportState):
     return cleanup_runtime_fields(REPORT_GRAPH.invoke(state))
 
 
-def run_single_report_graph(ticker, company_name, agents, tasks, macro_context):
+def run_single_report_graph(ticker, company_name, agents, tasks, macro_context, status_callback=None):
     state = create_initial_report_state(ticker, company_name)
     state["agents"] = agents
     state["tasks"] = tasks
@@ -408,4 +432,9 @@ def run_single_report_graph(ticker, company_name, agents, tasks, macro_context):
     state["macro_json"] = macro_context.get("macro_json")
     state["macro_score"] = macro_context.get("macro_score")
     state["macro_score_reasons"] = macro_context.get("macro_score_reasons", [])
+
+    if status_callback:
+        state["status_callback"] = status_callback
+        notify_status(state)
+
     return run_report_graph(state)

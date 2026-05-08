@@ -291,7 +291,7 @@ function ReportDetail({ content, isLoading, onBack, showBackButton = true }) {
                 </p>
 
                 <div className="report-chart-wrapper">
-                  <ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height="100%" minHeight={360}>
                     <BarChart
                       data={chartData}
                       margin={{ top: 46, right: 24, left: 24, bottom: 24 }}

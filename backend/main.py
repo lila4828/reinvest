@@ -1231,7 +1231,7 @@ def build_macro_context(agents, tasks):
     }
 
 
-def run_multiple_report_pipeline(targets, agents, tasks, macro_context=None):
+def run_multiple_report_pipeline(targets, agents, tasks, macro_context=None, status_callback=None):
     from graphs.report_graph import run_single_report_graph
 
     if macro_context is None:
@@ -1247,17 +1247,21 @@ def run_multiple_report_pipeline(targets, agents, tasks, macro_context=None):
                 agents,
                 tasks,
                 macro_context,
+                status_callback=status_callback,
             )
         except Exception as e:
             logger.exception(f"종목별 리포트 생성 중 예외 발생: {company_name} ({ticker})")
             state = build_failed_state((ticker, company_name), e)
+
+            if status_callback:
+                status_callback(state)
 
         results.append(state)
 
     return results, macro_context
 
 
-def run_financial_crew(stock_pool=None):
+def run_financial_crew(stock_pool=None, status_callback=None):
     stock_pool = normalize_stock_pool(stock_pool)
     openai_api_key = require_env("OPENAI_API_KEY")
 
@@ -1279,6 +1283,7 @@ def run_financial_crew(stock_pool=None):
         stock_pool,
         agents,
         tasks,
+        status_callback=status_callback,
     )
     all_reports = [
         state.get("output_report") or build_output_report_item(state)

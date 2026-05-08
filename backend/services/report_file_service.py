@@ -21,7 +21,7 @@ def sanitize_filename(value: str):
     return text.strip()
 
 
-def save_report_files(output):
+def save_report_files(output, status_callback=None):
     try:
         result_date = output["date"]
         result_dir = os.path.join("result", result_date)
@@ -44,6 +44,9 @@ def save_report_files(output):
             if state is not None:
                 state["current_step"] = "report_save"
 
+                if status_callback:
+                    status_callback(state)
+
             try:
                 ticker = sanitize_filename(item["ticker"])
                 company = sanitize_filename(item["company"])
@@ -64,6 +67,9 @@ def save_report_files(output):
                             "markdown": item.get("report", ""),
                         }
 
+                    if status_callback:
+                        status_callback(state)
+
                 logger.info(f"report file saved: {file_path}")
 
             except Exception as e:
@@ -74,6 +80,9 @@ def save_report_files(output):
                     state["summary_saved"] = False
                     state["status"] = "partial_failed" if state.get("final_report") else "failed"
                     state.setdefault("errors", []).append(error_message)
+
+                    if status_callback:
+                        status_callback(state)
 
                 continue
 
@@ -94,7 +103,11 @@ def save_report_files(output):
 
         for state in summary_states:
             state["current_step"] = "summary_save"
+            if status_callback:
+                status_callback(state)
             save_report_summary(state)
+            if status_callback:
+                status_callback(state)
 
         summary_file = os.path.join(result_dir, "summary.md")
         logger.info(

@@ -203,6 +203,106 @@ def has_running_job(session_id: str):
         )
 
 
+def build_targets_status_from_stocks(
+    stocks,
+    status="pending",
+    current_step="pending",
+    errors=None,
+    summary_saved=False,
+):
+    return [
+        {
+            "ticker": stock.get("ticker"),
+            "company_name": stock.get("company") or stock.get("company_name"),
+            "status": status,
+            "current_step": current_step,
+            "errors": errors or [],
+            "summary_saved": summary_saved,
+        }
+        for stock in stocks
+    ]
+
+
+def build_targets_status_from_states(report_states):
+    targets_status = []
+
+    for state in report_states or []:
+        targets_status.append(
+            {
+                "ticker": state.get("ticker"),
+                "company_name": state.get("company_name") or state.get("company"),
+                "status": state.get("status"),
+                "current_step": state.get("current_step"),
+                "errors": state.get("errors") or [],
+                "summary_saved": bool(state.get("summary_saved")),
+            }
+        )
+
+    return targets_status
+
+
+INDIVIDUAL_REPORT_STEPS = {
+    "accounting",
+    "research",
+    "youtube_rag",
+    "price",
+    "analysis",
+    "report_save",
+    "summary_save",
+    "report_generated",
+    "completed",
+    "failed",
+    "partial_failed",
+}
+
+TERMINAL_TARGET_STATUSES = {"completed", "success", "failed", "partial_failed"}
+
+
+def update_job_target_status(job_id: str, state):
+    state_status = build_targets_status_from_states([state])
+
+    if not state_status:
+        return
+
+    next_item = state_status[0]
+
+    with jobs_lock:
+        job = jobs.get(job_id)
+
+        if not job:
+            return
+
+        targets_status = job.get("targets_status") or build_targets_status_from_stocks(
+            job.get("stocks", []),
+        )
+        updated = False
+
+        for index, item in enumerate(targets_status):
+            if item.get("ticker") == next_item.get("ticker"):
+                targets_status[index] = {
+                    **item,
+                    **next_item,
+                }
+                updated = True
+                break
+
+        if not updated:
+            targets_status.append(next_item)
+
+        if next_item.get("current_step") in INDIVIDUAL_REPORT_STEPS:
+            for item in targets_status:
+                if item.get("ticker") == next_item.get("ticker"):
+                    continue
+
+                if item.get("status") in TERMINAL_TARGET_STATUSES:
+                    continue
+
+                if item.get("current_step") == "macro":
+                    item["current_step"] = "pending"
+
+        job["targets_status"] = targets_status
+
+
 def normalize_ticker_for_analysis(ticker: str):
     ticker = str(ticker or "").strip().upper()
 
@@ -224,15 +324,29 @@ def run_report_background(job_id: str, stock_pool: list[tuple[str, str]]):
         if job_id in jobs:
             jobs[job_id]["status"] = "running"
             jobs[job_id]["started_at"] = datetime.now().isoformat(timespec="seconds")
+            jobs[job_id]["targets_status"] = build_targets_status_from_stocks(
+                jobs[job_id].get("stocks", []),
+                status="running",
+                current_step="macro",
+            )
 
     try:
         from pipelines.report_pipeline import run_report_pipeline, save_pipeline_output
         
-        output = run_report_pipeline(stock_pool=stock_pool)
-        result_dir = save_pipeline_output(output)
+        output = run_report_pipeline(
+            stock_pool=stock_pool,
+            status_callback=lambda state: update_job_target_status(job_id, state),
+        )
+        result_dir = save_pipeline_output(
+            output,
+            status_callback=lambda state: update_job_target_status(job_id, state),
+        )
 
         report_count = len(output.get("reports", []))
         result_date = output["date"]
+        targets_status = build_targets_status_from_states(
+            output.get("_report_states", [])
+        )
 
         with jobs_lock:
             jobs[job_id]["status"] = "success"
@@ -241,6 +355,12 @@ def run_report_background(job_id: str, stock_pool: list[tuple[str, str]]):
             jobs[job_id]["result_dir"] = result_dir
             jobs[job_id]["report_count"] = report_count
             jobs[job_id]["error"] = None
+            jobs[job_id]["targets_status"] = targets_status or build_targets_status_from_stocks(
+                jobs[job_id].get("stocks", []),
+                status="completed",
+                current_step="completed",
+                summary_saved=True,
+            )
 
         api_logger.info(
             f"리포트 작업 성공: job_id={job_id}, "
@@ -255,6 +375,12 @@ def run_report_background(job_id: str, stock_pool: list[tuple[str, str]]):
             jobs[job_id]["finished_at"] = datetime.now().isoformat(timespec="seconds")
             jobs[job_id]["error"] = str(e)
             jobs[job_id]["traceback"] = error_traceback
+            jobs[job_id]["targets_status"] = build_targets_status_from_stocks(
+                jobs[job_id].get("stocks", []),
+                status="failed",
+                current_step="failed",
+                errors=[str(e)],
+            )
 
         api_logger.exception(f"리포트 작업 실패: job_id={job_id}, error={e}")
 
@@ -555,6 +681,17 @@ def run_report(
             "result_dir": None,
             "report_count": 0,
             "error": None,
+            "targets_status": build_targets_status_from_stocks(
+                [
+                    {
+                        "ticker": ticker,
+                        "company": company,
+                    }
+                    for ticker, company in stock_pool
+                ],
+                status="pending",
+                current_step="pending",
+            ),
         }
 
     api_logger.info(
@@ -585,6 +722,12 @@ def get_report_status(job_id: str, session=Depends(get_current_session)):
         "result_date": job["result_date"],
         "report_count": job["report_count"],
         "error": job["error"],
+        "targets_status": job.get("targets_status") or build_targets_status_from_stocks(
+            job.get("stocks", []),
+            status=job.get("status"),
+            current_step=job.get("status") or "pending",
+            errors=[job["error"]] if job.get("error") else None,
+        ),
     }
 
 

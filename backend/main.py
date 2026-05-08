@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 YOUTUBE_UPDATE_TIMEOUT_SECONDS = int(
-    os.getenv("YOUTUBE_UPDATE_TIMEOUT_SECONDS", "180")
+    os.getenv("YOUTUBE_UPDATE_TIMEOUT_SECONDS", "60")
 )
 
 SCORING_CONFIG = {

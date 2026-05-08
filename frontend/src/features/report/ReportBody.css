@@ -210,13 +210,13 @@
   min-width: 0;
   max-width: 100%;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   overflow: hidden;
   font-weight: 900;
   white-space: nowrap;
 }
 
-.report-list-title > span:first-child {
+.report-list-stock-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -230,6 +230,17 @@
   color: #0b5ed7;
   font-size: 0.74rem;
   font-weight: 900;
+}
+
+.report-list-new {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #fff3cd;
+  color: #9a6700;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
 }
 
 .report-list-date {

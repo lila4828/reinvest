@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
+import { extractMacroJson } from './reportDisplayUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -15,6 +16,7 @@ export function useReports(refreshKey = 0) {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [reportContent, setReportContent] = useState('');
+  const [macroData, setMacroData] = useState(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -29,12 +31,32 @@ export function useReports(refreshKey = 0) {
 
     apiClient.get('/api/reports')
       .then(response => {
+        const allReports = response.data.reports || [];
         const singleReports = (response.data.reports || []).filter(
           report => !report.is_summary
         );
+        const summaryReport = allReports
+          .filter(report => report.is_summary)
+          .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
 
         setReports(singleReports);
         setIsLoadingList(false);
+
+        if (summaryReport?.date && summaryReport?.filename) {
+          const date = encodeURIComponent(summaryReport.date);
+          const filename = encodeURIComponent(summaryReport.filename);
+
+          apiClient.get(`/api/reports/${date}/${filename}`)
+            .then(summaryResponse => {
+              setMacroData(extractMacroJson(summaryResponse.data.content));
+            })
+            .catch(error => {
+              console.error('summary.md의 MACRO_DATA를 불러오지 못했습니다.', error);
+              setMacroData(null);
+            });
+        } else {
+          setMacroData(null);
+        }
       })
       .catch(error => {
         console.error('리포트 목록을 불러오지 못했습니다.', error);
@@ -46,6 +68,7 @@ export function useReports(refreshKey = 0) {
         }
 
         setIsLoadingList(false);
+        setMacroData(null);
       });
   }, [refreshKey]);
 
@@ -132,6 +155,7 @@ export function useReports(refreshKey = 0) {
     reports,
     selectedReport,
     reportContent,
+    macroData,
     isLoadingList,
     isLoadingDetail,
     errorMsg,

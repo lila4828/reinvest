@@ -9,6 +9,7 @@ function ReportBody({ refreshKey = 0 }) {
     reports,
     selectedReport,
     reportContent,
+    macroData,
     isLoadingList,
     isLoadingDetail,
     errorMsg,
@@ -69,7 +70,9 @@ function ReportBody({ refreshKey = 0 }) {
         <section className="report-workspace-detail">
           {selectedReport ? (
             <ReportDetail
+              report={selectedReport}
               content={reportContent}
+              macroData={macroData}
               isLoading={isLoadingDetail}
               onBack={handleBack}
               showBackButton={false}

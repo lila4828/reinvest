@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  addKrwConversionToPriceTable,
+  extractMacroJson,
+} from '../report/reportDisplayUtils';
 import './MainBody.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -199,6 +203,7 @@ function MainBody({
       return [];
     }
   });
+  const [macroData, setMacroData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -234,6 +239,32 @@ function MainBody({
         }
 
         const latestByTicker = new Map();
+        const summaryReport = (listData.reports || [])
+          .filter((report) => report.is_summary)
+          .sort((a, b) => getReportSortValue(b).localeCompare(getReportSortValue(a)))[0];
+
+        if (summaryReport?.date && summaryReport?.filename) {
+          try {
+            const summaryDate = encodeURIComponent(summaryReport.date);
+            const summaryFilename = encodeURIComponent(summaryReport.filename);
+            const summaryRes = await fetch(
+              `${API_BASE_URL}/api/reports/${summaryDate}/${summaryFilename}`,
+              { credentials: 'include' },
+            );
+
+            if (summaryRes.ok) {
+              const summaryData = await summaryRes.json();
+              setMacroData(extractMacroJson(summaryData.content));
+            } else {
+              setMacroData(null);
+            }
+          } catch (macroError) {
+            console.error('summary.md의 MACRO_DATA를 불러오지 못했습니다.', macroError);
+            setMacroData(null);
+          }
+        } else {
+          setMacroData(null);
+        }
 
         (listData.reports || []).forEach((report) => {
           if (report.is_summary) return;
@@ -358,6 +389,11 @@ function MainBody({
   if (reports.length === 0) return null;
 
   const selectedReport = reports[selectedIndex];
+  const selectedReportMarkdown = addKrwConversionToPriceTable(
+    selectedReport?.mdContent || '',
+    selectedReport,
+    macroData,
+  );
   const selectedReportKey = selectedReport?.companyName || '';
   const todayDateText = getTodayDateText();
   const hasTodaySelectedReport = selectedReport?.date === todayDateText;
@@ -365,6 +401,10 @@ function MainBody({
   const displayReportTargetsStatus = getDisplayTargetItems(reportTargetsStatus);
   const normalizedKeyword = searchKeyword.trim().toLowerCase();
   const favoriteSet = new Set(favoriteReports);
+  const hasScanFilters =
+    normalizedKeyword !== '' ||
+    showFavoritesOnly ||
+    selectedOpinions.length > 0;
   const filteredReports = reports
     .map((report, index) => ({ ...report, sourceIndex: index }))
     .filter((report) => {
@@ -407,6 +447,12 @@ function MainBody({
 
       return [...prev, opinion];
     });
+  };
+
+  const handleResetScanFilters = () => {
+    setSearchKeyword('');
+    setShowFavoritesOnly(false);
+    setSelectedOpinions([]);
   };
 
   const handleCreateSelectedTodayReport = async () => {
@@ -467,6 +513,14 @@ function MainBody({
                 <span>{opinion}</span>
               </label>
             ))}
+            <button
+              type="button"
+              className="report-filter-reset"
+              onClick={handleResetScanFilters}
+              disabled={!hasScanFilters}
+            >
+              필터 초기화
+            </button>
           </div>
 
           <div className="report-selector-list">
@@ -545,7 +599,7 @@ function MainBody({
           </button>
         </div>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {selectedReport?.mdContent || ''}
+          {selectedReportMarkdown}
         </ReactMarkdown>
         <div className="report-more-actions">
           <Link

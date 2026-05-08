@@ -9,9 +9,15 @@ body {
   background-color: var(--bg-color);
 }
 
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
 /* OncoCare 공통 레이아웃 래퍼 */
 .main-content {
-  min-height: 100vh;
   display: flex;
+  flex: 1 0 auto;
   flex-direction: column;
 }

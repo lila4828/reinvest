@@ -13,6 +13,7 @@ import {
   LabelList,
   ReferenceLine,
 } from 'recharts';
+import { addKrwConversionToPriceTable } from './reportDisplayUtils';
 import './ReportDetail.css';
 
 function cleanReportContent(content) {
@@ -183,6 +184,37 @@ function extractChartSection(content) {
   };
 }
 
+function formatReportBaseDateTime(report) {
+  const source = report?.modified_at || report?.updated_at || report?.generated_at;
+
+  if (!source) {
+    return report?.date || '';
+  }
+
+  const normalizedSource = String(source).trim();
+  const match = normalizedSource.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/);
+
+  if (match) {
+    return `${match[1]} ${match[2]}`;
+  }
+
+  return report?.date || normalizedSource.slice(0, 10);
+}
+
+function addBaseDateToContent(content, report) {
+  const reportBaseDateTime = formatReportBaseDateTime(report);
+
+  if (!content || !reportBaseDateTime) return content;
+
+  const headContent = content.slice(0, 500);
+
+  if (/기준\s*:\s*\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?/.test(headContent)) {
+    return content;
+  }
+
+  return content.replace(/^(#\s+.+)$/m, `$1\n\n기준: ${reportBaseDateTime}`);
+}
+
 function CustomTooltip({ active, payload, label, isKoreanStock }) {
   if (!active || !payload || !payload.length) return null;
 
@@ -251,11 +283,22 @@ function renderBarLabel(isKoreanStock) {
   };
 }
 
-function ReportDetail({ content, isLoading, onBack, showBackButton = true }) {
+function ReportDetail({
+  report,
+  content,
+  macroData,
+  isLoading,
+  onBack,
+  showBackButton = true,
+}) {
   const { cleanedContent, chartData, isKoreanStock } = useMemo(
     () => extractChartSection(content),
     [content]
   );
+  const displayContent = useMemo(() => {
+    const contentWithDate = addBaseDateToContent(cleanedContent, report);
+    return addKrwConversionToPriceTable(contentWithDate, report, macroData);
+  }, [cleanedContent, report, macroData]);
 
   if (isLoading) {
     return <div className="p-4 text-center">리포트 상세 내용을 불러오는 중...</div>;
@@ -277,7 +320,7 @@ function ReportDetail({ content, isLoading, onBack, showBackButton = true }) {
         <>
           <div className="markdown-content p-4 bg-light rounded border shadow-sm mb-4">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {cleanedContent}
+              {displayContent}
             </ReactMarkdown>
           </div>
 

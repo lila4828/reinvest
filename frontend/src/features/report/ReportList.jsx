@@ -1,5 +1,43 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+const READ_REPORTS_STORAGE_KEY = 'ai-reinvest-read-reports';
+
+function getReportReadKey(report) {
+  if (!report?.date || !report?.filename) return '';
+  return `${report.date}/${report.filename}`;
+}
+
+function getTodayDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function loadReadReports() {
+  try {
+    const rawValue = localStorage.getItem(READ_REPORTS_STORAGE_KEY);
+    const parsedValue = rawValue ? JSON.parse(rawValue) : [];
+    return Array.isArray(parsedValue) ? parsedValue : [];
+  } catch (error) {
+    console.warn('읽은 리포트 상태를 불러오지 못했습니다.', error);
+    return [];
+  }
+}
+
+function saveReadReports(readReports) {
+  try {
+    localStorage.setItem(
+      READ_REPORTS_STORAGE_KEY,
+      JSON.stringify(Array.from(readReports)),
+    );
+  } catch (error) {
+    console.warn('읽은 리포트 상태를 저장하지 못했습니다.', error);
+  }
+}
+
 function getReportTitle(report) {
   if (!report) return '리포트';
 
@@ -34,15 +72,36 @@ function getReportTicker(report) {
 }
 
 function getReportMarketLabel(report) {
-  if (report?.market_label) {
-    return report.market_label;
+  const ticker = getReportTicker(report);
+  const marketText = [
+    report?.market_label,
+    report?.exchange,
+    report?.market,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toUpperCase();
+
+  if (
+    ticker.endsWith('.KS') ||
+    ticker.endsWith('.KQ') ||
+    marketText.includes('KOSPI') ||
+    marketText.includes('KOSDAQ') ||
+    marketText.includes('코스피') ||
+    marketText.includes('코스닥')
+  ) {
+    return '국내 주식';
   }
 
-  const ticker = getReportTicker(report);
-
-  if (ticker.endsWith('.KS')) return '코스피';
-  if (ticker.endsWith('.KQ')) return '코스닥';
-  if (ticker) return '미국';
+  if (
+    ticker ||
+    marketText.includes('NASDAQ') ||
+    marketText.includes('NYSE') ||
+    marketText.includes('AMEX') ||
+    marketText.includes('미국')
+  ) {
+    return '미국 주식';
+  }
 
   return '';
 }
@@ -84,10 +143,46 @@ function ReportList({
 }) {
   const [stockKeyword, setStockKeyword] = useState(initialStockKeyword);
   const [selectedDate, setSelectedDate] = useState('');
+  const [readReports, setReadReports] = useState(() => new Set(loadReadReports()));
+  const todayDate = getTodayDateString();
 
   useEffect(() => {
     setStockKeyword(initialStockKeyword);
   }, [initialStockKeyword]);
+
+  useEffect(() => {
+    const readKey = getReportReadKey(selectedReport);
+
+    if (!readKey || readReports.has(readKey)) {
+      return;
+    }
+
+    setReadReports((prev) => {
+      const next = new Set(prev);
+      next.add(readKey);
+      saveReadReports(next);
+      return next;
+    });
+  }, [selectedReport?.date, selectedReport?.filename, readReports]);
+
+  const markReportAsRead = (report) => {
+    const readKey = getReportReadKey(report);
+
+    if (!readKey) {
+      return;
+    }
+
+    setReadReports((prev) => {
+      if (prev.has(readKey)) {
+        return prev;
+      }
+
+      const next = new Set(prev);
+      next.add(readKey);
+      saveReadReports(next);
+      return next;
+    });
+  };
 
   const filteredReports = useMemo(() => {
     const normalizedStockKeyword = stockKeyword.trim().toLowerCase();
@@ -236,6 +331,9 @@ function ReportList({
             {sortedReports.map((report, reportIndex) => {
               const title = getReportTitle(report);
               const marketLabel = getReportMarketLabel(report);
+              const readKey = getReportReadKey(report);
+              const isTodayReport = String(report.date || '') === todayDate;
+              const isUnread = Boolean(isTodayReport && readKey && !readReports.has(readKey));
 
               return (
                 <button
@@ -247,14 +345,22 @@ function ReportList({
                       ? 'active'
                       : ''
                   }`}
-                  onClick={() => onReportClick(report)}
+                  onClick={() => {
+                    markReportAsRead(report);
+                    onReportClick(report);
+                  }}
                 >
                   <span className="report-list-item-main">
                     <span className="report-list-title">
-                      <span>{title}</span>
                       {marketLabel && (
                         <span className="report-list-market">
                           {marketLabel}
+                        </span>
+                      )}
+                      <span className="report-list-stock-name">{title}</span>
+                      {isUnread && (
+                        <span className="report-list-new">
+                          NEW
                         </span>
                       )}
                     </span>

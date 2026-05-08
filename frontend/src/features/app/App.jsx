@@ -6,6 +6,7 @@ import '../root.css';
 import '../report-generator/ReportGenerator.css';
 
 import MainHeader from '../layout/MainHeader';
+import SiteFooter from '../layout/SiteFooter';
 import Login from '../login/Login';
 
 import Main from '../main/Main';
@@ -744,7 +745,12 @@ function App() {
   if (!isAuthenticated) {
     return (
       <>
-        <Login onLoginSuccess={handleLoginSuccess} />
+        <div className="app-shell">
+          <main className="main-content">
+            <Login onLoginSuccess={handleLoginSuccess} />
+          </main>
+          <SiteFooter />
+        </div>
         <AppToastViewport />
       </>
     );
@@ -753,27 +759,30 @@ function App() {
   return (
     <>
       <BrowserRouter>
-        <MainHeader username={username} onLogout={handleLogout} />
-        <div className="main-content">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <Main
-                  reportRefreshKey={reportRefreshKey}
-                  onStartReportJob={startReportJob}
-                  isReportWorking={isReportWorking}
-                  reportJobStatus={reportJobStatus}
-                  reportStatusMessage={reportStatusMessage}
-                  reportTargetsStatus={reportTargetsStatus}
-                />
-              }
-            />
-            <Route
-              path="/report"
-              element={<Report refreshKey={reportRefreshKey} />}
-            />
-          </Routes>
+        <div className="app-shell">
+          <MainHeader username={username} onLogout={handleLogout} />
+          <main className="main-content">
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <Main
+                    reportRefreshKey={reportRefreshKey}
+                    onStartReportJob={startReportJob}
+                    isReportWorking={isReportWorking}
+                    reportJobStatus={reportJobStatus}
+                    reportStatusMessage={reportStatusMessage}
+                    reportTargetsStatus={reportTargetsStatus}
+                  />
+                }
+              />
+              <Route
+                path="/report"
+                element={<Report refreshKey={reportRefreshKey} />}
+              />
+            </Routes>
+          </main>
+          <SiteFooter />
         </div>
       </BrowserRouter>
 

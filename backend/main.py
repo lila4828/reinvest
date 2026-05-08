@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import subprocess
+import sys
 from dotenv import load_dotenv
 from crewai import Crew, Process, LLM
 from datetime import datetime
@@ -19,8 +21,8 @@ from flows.youtube.task import YoutubeTask
 
 # 유튜브 자동화 파이프라인 임포트
 from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
-from vector_db.update_youtube_db import build_local_youtube_db
-from vector_db.build_vector_db import build_db_from_transcripts
+from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
+from vector_db.youtube_update_guard import filter_processable_video_ids
 from services.report_file_service import save_report_files
 from services.summary_service import extract_report_summary
 from schemas.report_state import ReportState, create_initial_report_state
@@ -53,6 +55,11 @@ logging.getLogger("chromadb").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+YOUTUBE_UPDATE_TIMEOUT_SECONDS = int(
+    os.getenv("YOUTUBE_UPDATE_TIMEOUT_SECONDS", "180")
+)
 
 SCORING_CONFIG = {
     "macro": {
@@ -370,21 +377,88 @@ def create_crew_components(fast_llm, fact_llm, smart_llm):
     }
 
 
+def run_python_module_call_with_timeout(step_name: str, code: str, timeout_seconds: int):
+    try:
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", code],
+            cwd=BACKEND_DIR,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "%s timeout(%s초). 기존 YouTube Vector DB를 사용해 계속 진행합니다.",
+            step_name,
+            timeout_seconds,
+        )
+        return False
+    except Exception as e:
+        logger.warning(
+            "%s 실행 실패. 기존 YouTube Vector DB를 사용해 계속 진행합니다: %s",
+            step_name,
+            e,
+        )
+        return False
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        detail = stderr or stdout or f"returncode={result.returncode}"
+        logger.warning(
+            "%s 실패. 기존 YouTube Vector DB를 사용해 계속 진행합니다: %s",
+            step_name,
+            detail[-1000:],
+        )
+        return False
+
+    logger.info("%s 완료", step_name)
+    return True
+
+
 def update_youtube_vector_db():
     logger.debug("[0단계] 유튜브 최신 영상 확인...")
 
     try:
         new_vids = fetch_all_latest_youtube_ids(fetch_limit=5)
 
-        if new_vids:
-            logger.info(
-                f"유튜브 최신 영상 {len(new_vids)}개 감지. "
-                f"YouTube Vector DB를 업데이트합니다."
-            )
-            build_local_youtube_db()
-            build_db_from_transcripts()
-        else:
+        if not new_vids:
             logger.info("유튜브 신규 영상 없음. 기존 DB를 사용합니다.")
+            return
+
+        processable_vids, skipped_vids = filter_processable_video_ids(new_vids)
+
+        if skipped_vids:
+            logger.warning(
+                "유튜브 최신 영상 %s개는 live/upcoming/처리 불가 상태라 pending 저장 후 스킵했습니다.",
+                len(skipped_vids),
+            )
+
+        if not processable_vids:
+            logger.info(
+                "이번 리포트 생성 중 처리 가능한 유튜브 신규 영상이 없어 기존 DB를 사용합니다."
+            )
+            return
+
+        logger.info(
+            "유튜브 최신 영상 %s개 감지. YouTube Vector DB를 제한 시간 안에서 업데이트합니다.",
+            len(processable_vids),
+        )
+
+        if not run_python_module_call_with_timeout(
+            "YouTube transcript update",
+            "from vector_db.update_youtube_db import build_local_youtube_db; build_local_youtube_db()",
+            YOUTUBE_UPDATE_TIMEOUT_SECONDS,
+        ):
+            return
+
+        run_python_module_call_with_timeout(
+            "YouTube vector DB rebuild",
+            "from vector_db.build_vector_db import build_db_from_transcripts; build_db_from_transcripts()",
+            YOUTUBE_UPDATE_TIMEOUT_SECONDS,
+        )
 
     except Exception as e:
         logger.exception(f"유튜브 DB 업데이트 실패. 기존 DB로 진행합니다: {e}")
@@ -1137,12 +1211,37 @@ def run_single_report_pipeline(
     return finalize_state(state)
 
 
-def run_multiple_report_pipeline(targets, agents, tasks, macro_context):
+def build_macro_context(agents, tasks):
+    macro_state: ReportState = {
+        "status": "running",
+        "current_step": "macro",
+        "errors": [],
+    }
+    macro_score, macro_score_reasons, macro_json = run_macro_step(
+        agents["macro"],
+        tasks["macro"],
+        state=macro_state,
+    )
+
+    return {
+        "macro_data": macro_state.get("macro_data"),
+        "macro_score": macro_score,
+        "macro_score_reasons": macro_score_reasons,
+        "macro_json": macro_json,
+    }
+
+
+def run_multiple_report_pipeline(targets, agents, tasks, macro_context=None):
+    from graphs.report_graph import run_single_report_graph
+
+    if macro_context is None:
+        macro_context = build_macro_context(agents, tasks)
+
     results = []
 
     for ticker, company_name in targets:
         try:
-            state = run_single_report_pipeline(
+            state = run_single_report_graph(
                 ticker,
                 company_name,
                 agents,
@@ -1155,7 +1254,7 @@ def run_multiple_report_pipeline(targets, agents, tasks, macro_context):
 
         results.append(state)
 
-    return results
+    return results, macro_context
 
 
 def run_financial_crew(stock_pool=None):
@@ -1175,39 +1274,17 @@ def run_financial_crew(stock_pool=None):
     # ---------------------------------------------------------
     update_youtube_vector_db()
 
-    # ---------------------------------------------------------
-    # 1. 매크로 분석
-    # ---------------------------------------------------------
-    macro_state: ReportState = {
-        "status": "running",
-        "current_step": "macro",
-        "errors": [],
-    }
-    macro_score, macro_score_reasons, macro_json = run_macro_step(
-        agents["macro"],
-        tasks["macro"],
-        state=macro_state,
-    )
-
-    macro_context = {
-        "macro_data": macro_state.get("macro_data"),
-        "macro_score": macro_score,
-        "macro_score_reasons": macro_score_reasons,
-        "macro_json": macro_json,
-    }
-
     logger.debug("report pipeline started")
-    report_states = run_multiple_report_pipeline(
+    report_states, macro_context = run_multiple_report_pipeline(
         stock_pool,
         agents,
         tasks,
-        macro_context,
     )
     all_reports = [
         state.get("output_report") or build_output_report_item(state)
         for state in report_states
     ]
-    summary_output = build_run_summary_output(macro_json, all_reports)
+    summary_output = build_run_summary_output(macro_context["macro_json"], all_reports)
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),

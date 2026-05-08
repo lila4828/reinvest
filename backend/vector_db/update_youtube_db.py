@@ -7,11 +7,16 @@ import yt_dlp
 from openai import OpenAI
 from tqdm import tqdm
 
+from vector_db.youtube_update_guard import get_live_skip_reason, upsert_pending_live_video
+
 load_dotenv()
 
 
 MAX_WHISPER_FILE_SIZE = 25 * 1024 * 1024  # 25MB = 26,214,400 bytes
 CHUNK_SECONDS = 1500  # 25분 단위 분할
+YTDLP_TIMEOUT_SECONDS = int(os.getenv("YOUTUBE_YTDLP_TIMEOUT_SECONDS", "30"))
+FFMPEG_TIMEOUT_SECONDS = int(os.getenv("YOUTUBE_FFMPEG_TIMEOUT_SECONDS", "60"))
+WHISPER_TIMEOUT_SECONDS = int(os.getenv("YOUTUBE_WHISPER_TIMEOUT_SECONDS", "60"))
 
 
 def run_ffmpeg(command):
@@ -20,6 +25,7 @@ def run_ffmpeg(command):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
+        timeout=FFMPEG_TIMEOUT_SECONDS,
     )
 
     if result.returncode != 0:
@@ -106,7 +112,7 @@ def prepare_audio_files_for_whisper(audio_path, audios_dir, vid):
     return chunk_paths, "96k 청크 분할", original_size
 
 
-def build_local_youtube_db():
+def build_local_youtube_db(target_video_ids=None):
     # 스크립트 파일 위치 기준으로 경로 고정
     script_dir = os.path.dirname(os.path.abspath(__file__))
     backend_dir = os.path.abspath(os.path.join(script_dir, ".."))
@@ -133,6 +139,18 @@ def build_local_youtube_db():
         print(f"🚨 파일 읽기 실패: {type(e).__name__}: {e}")
         return
 
+    if target_video_ids is not None:
+        target_video_ids = {
+            str(video_id).strip()
+            for video_id in target_video_ids
+            if str(video_id).strip()
+        }
+        video_ids = list(target_video_ids)
+
+        if not video_ids:
+            print("처리할 pending 영상 ID가 없습니다.")
+            return
+
     transcripts_dir = os.path.join(backend_dir, "transcripts")
     audios_dir = os.path.join(backend_dir, "audios")
 
@@ -150,7 +168,7 @@ def build_local_youtube_db():
     print("💰 [비용 알림] 신규 자막이 없는 영상은 API 호출 없이 스킵합니다.")
     print("🎧 [용량 처리] 25MB 이상 오디오는 96k MP3 chunk로 분할 후 변환합니다.\n")
 
-    client = OpenAI()
+    client = OpenAI(timeout=WHISPER_TIMEOUT_SECONDS)
     target_video_ids = video_ids
 
     for vid in tqdm(
@@ -181,6 +199,9 @@ def build_local_youtube_db():
                 "outtmpl": audio_path,
                 "quiet": True,
                 "no_warnings": True,
+                "socket_timeout": YTDLP_TIMEOUT_SECONDS,
+                "retries": 1,
+                "fragment_retries": 1,
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -188,6 +209,17 @@ def build_local_youtube_db():
                     youtube_url,
                     download=False,
                 )
+
+                live_skip_reason = get_live_skip_reason(info)
+                if live_skip_reason:
+                    upsert_pending_live_video(vid, info, live_skip_reason)
+                    skip_expected_count += 1
+                    tqdm.write("")
+                    tqdm.write(
+                        f"⏭️ live/upcoming 또는 처리 불가 영상 스킵: {vid} "
+                        f"({live_skip_reason})"
+                    )
+                    continue
 
                 title = info.get("title") or "제목 없음"
                 upload_date = info.get("upload_date") or "알수없음"

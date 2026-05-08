@@ -372,9 +372,6 @@ function MainBody({
           <div className="main-body-header">
             <div>
               <h4 className="fw-bold mb-1">🏭 타겟 종목 스캔 현황</h4>
-              <p className="text-muted mb-0 small">
-                {selectedReport.companyName} 리포트를 보고 있습니다.
-              </p>
             </div>
           </div>
 

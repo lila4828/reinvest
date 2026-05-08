@@ -2,6 +2,10 @@ import os
 import yt_dlp
 
 
+YOUTUBE_CHANNEL_FETCH_TIMEOUT_SECONDS = int(
+    os.getenv("YOUTUBE_CHANNEL_FETCH_TIMEOUT_SECONDS", "15")
+)
+
 TARGET_CHANNEL_URLS = [
     "https://www.youtube.com/@주알홍쌤/videos",
     "https://www.youtube.com/@주알홍쌤/streams",
@@ -41,6 +45,9 @@ def fetch_video_ids_from_channel(channel_url, fetch_limit=15):
         "playlistend": fetch_limit,
         "quiet": True,
         "no_warnings": True,
+        "socket_timeout": YOUTUBE_CHANNEL_FETCH_TIMEOUT_SECONDS,
+        "retries": 1,
+        "fragment_retries": 1,
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:

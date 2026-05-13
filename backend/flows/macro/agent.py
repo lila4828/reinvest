@@ -1,3 +1,4 @@
+# Legacy CrewAI reference kept for migration history; active runtime does not import this module.
 from crewai import Agent
 from flows.macro.tool import fetch_macro_data
 

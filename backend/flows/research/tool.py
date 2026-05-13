@@ -1,45 +1,44 @@
-import os
+﻿import os
 import json
 import ast
-from crewai.tools import BaseTool
-from crewai_tools import SerperDevTool
+import requests
 
 
-class SafeSerperNewsTool(BaseTool):
+class SafeSerperNewsTool:
     name: str = "safe_serper_news_search"
     description: str = (
-        "Google News 기반 금융 뉴스 검색 도구입니다. "
-        "기업명과 검색 앵글을 입력하면 실제 검색 결과를 JSON으로 반환합니다."
+        "Google News 湲곕컲 湲덉쑖 ?댁뒪 寃???꾧뎄?낅땲?? "
+        "湲곗뾽紐낃낵 寃???듦????낅젰?섎㈃ ?ㅼ젣 寃??寃곌낵瑜?JSON?쇰줈 諛섑솚?⑸땲??"
     )
 
     def _normalize_results(self, raw_result):
         """
-        SerperDevTool 결과를 LLM이 읽기 쉬운 구조화된 results 배열로 변환합니다.
-        결과 형태가 dict/list/string 등으로 달라져도 최대한 안전하게 처리합니다.
+        SerperDevTool 寃곌낵瑜?LLM???쎄린 ?ъ슫 援ъ“?붾맂 results 諛곗뿴濡?蹂?섑빀?덈떎.
+        寃곌낵 ?뺥깭媛 dict/list/string ?깆쑝濡??щ씪?몃룄 理쒕????덉쟾?섍쾶 泥섎━?⑸땲??
         """
         try:
-            # raw_result가 문자열이면 dict/list로 파싱 시도
+            # raw_result媛 臾몄옄?댁씠硫?dict/list濡??뚯떛 ?쒕룄
             if isinstance(raw_result, str):
                 parsed = None
 
-                # 1차: JSON 파싱
+                # 1李? JSON ?뚯떛
                 try:
                     parsed = json.loads(raw_result)
                 except Exception:
                     pass
 
-                # 2차: Python literal 파싱
+                # 2李? Python literal ?뚯떛
                 if parsed is None:
                     try:
                         parsed = ast.literal_eval(raw_result)
                     except Exception:
                         parsed = None
 
-                # 파싱 실패 시 원문 일부만 반환
+                # ?뚯떛 ?ㅽ뙣 ???먮Ц ?쇰?留?諛섑솚
                 if parsed is None:
                     return [
                         {
-                            "title": "검색 결과 원문",
+                            "title": "寃??寃곌낵 ?먮Ц",
                             "source": "Serper",
                             "date": "N/A",
                             "link": "N/A",
@@ -49,23 +48,23 @@ class SafeSerperNewsTool(BaseTool):
 
                 raw_result = parsed
 
-            # Serper 결과가 dict인 경우
+            # Serper 寃곌낵媛 dict??寃쎌슦
             if isinstance(raw_result, dict):
                 candidates = []
 
-                # news 타입 결과
+                # news ???寃곌낵
                 if isinstance(raw_result.get("news"), list):
                     candidates.extend(raw_result.get("news"))
 
-                # organic 타입 결과 fallback
+                # organic ???寃곌낵 fallback
                 if isinstance(raw_result.get("organic"), list):
                     candidates.extend(raw_result.get("organic"))
 
-                # results 키 fallback
+                # results ??fallback
                 if isinstance(raw_result.get("results"), list):
                     candidates.extend(raw_result.get("results"))
 
-            # Serper 결과가 list인 경우
+            # Serper 寃곌낵媛 list??寃쎌슦
             elif isinstance(raw_result, list):
                 candidates = raw_result
 
@@ -81,27 +80,27 @@ class SafeSerperNewsTool(BaseTool):
                 title = (
                     item.get("title")
                     or item.get("name")
-                    or "제목 없음"
+                    or "?쒕ぉ ?놁쓬"
                 )
 
                 source = (
                     item.get("source")
                     or item.get("publisher")
                     or item.get("site")
-                    or "출처 불명"
+                    or "異쒖쿂 遺덈챸"
                 )
 
                 date = (
                     item.get("date")
                     or item.get("publishedDate")
                     or item.get("published")
-                    or "날짜 없음"
+                    or "?좎쭨 ?놁쓬"
                 )
 
                 link = (
                     item.get("link")
                     or item.get("url")
-                    or "URL 없음"
+                    or "URL ?놁쓬"
                 )
 
                 snippet = (
@@ -112,8 +111,8 @@ class SafeSerperNewsTool(BaseTool):
                     or ""
                 )
 
-                # 제목과 요약이 둘 다 비어 있으면 제외
-                if title == "제목 없음" and not snippet:
+                # ?쒕ぉ怨??붿빟??????鍮꾩뼱 ?덉쑝硫??쒖쇅
+                if title == "?쒕ぉ ?놁쓬" and not snippet:
                     continue
 
                 normalized.append(
@@ -131,7 +130,7 @@ class SafeSerperNewsTool(BaseTool):
         except Exception as e:
             return [
                 {
-                    "title": "검색 결과 파싱 실패",
+                    "title": "寃??寃곌낵 ?뚯떛 ?ㅽ뙣",
                     "source": "Serper",
                     "date": "N/A",
                     "link": "N/A",
@@ -145,32 +144,31 @@ class SafeSerperNewsTool(BaseTool):
                 return json.dumps(
                     {
                         "is_data_valid": False,
-                        "error": "SERPER_API_KEY 누락",
+                        "error": "SERPER_API_KEY ?꾨씫",
                         "query": query,
                         "results": [],
                     },
                     ensure_ascii=False,
                 )
 
-            # SerperDevTool 호출 직전에만 news 타입 지정
-            old_search_type = os.environ.get("SERPER_SEARCH_TYPE")
-            os.environ["SERPER_SEARCH_TYPE"] = "news"
-
-            try:
-                search_tool = SerperDevTool(search_type="news")
-                raw_result = search_tool.run(search_query=query)
-            finally:
-                # 다른 Serper 도구에 전역 영향 주지 않도록 복구
-                if old_search_type is None:
-                    os.environ.pop("SERPER_SEARCH_TYPE", None)
-                else:
-                    os.environ["SERPER_SEARCH_TYPE"] = old_search_type
+            # SerperDevTool ?몄텧 吏곸쟾?먮쭔 news ???吏??
+            response = requests.post(
+                "https://google.serper.dev/news",
+                headers={
+                    "X-API-KEY": os.getenv("SERPER_API_KEY"),
+                    "Content-Type": "application/json",
+                },
+                json={"q": query},
+                timeout=20,
+            )
+            response.raise_for_status()
+            raw_result = response.json()
 
             if not raw_result:
                 return json.dumps(
                     {
                         "is_data_valid": False,
-                        "error": "검색 결과 없음",
+                        "error": "寃??寃곌낵 ?놁쓬",
                         "query": query,
                         "results": [],
                     },
@@ -183,7 +181,7 @@ class SafeSerperNewsTool(BaseTool):
                 return json.dumps(
                     {
                         "is_data_valid": False,
-                        "error": "유효한 뉴스 결과 없음",
+                        "error": "?좏슚???댁뒪 寃곌낵 ?놁쓬",
                         "query": query,
                         "results": [],
                     },

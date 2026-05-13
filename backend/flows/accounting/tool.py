@@ -1,7 +1,6 @@
 import json
 import math
 import yfinance as yf
-from crewai.tools import tool
 
 
 def _to_float(value, default=None):
@@ -204,7 +203,6 @@ def collect_financial_data(ticker: str) -> dict:
         }
 
 
-@tool("Fetch Financial Data API")
 def fetch_financial_data(ticker: str) -> str:
     """
     yfinance에서 재무 데이터를 가져와 JSON 문자열로 반환합니다.

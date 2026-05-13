@@ -1,3 +1,4 @@
+# Legacy CrewAI reference kept for migration history; active runtime does not import this module.
 from crewai import Task
 from pydantic import BaseModel, Field
 from typing import Optional, List

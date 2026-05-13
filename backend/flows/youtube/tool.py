@@ -3,9 +3,7 @@ import json
 import re
 from datetime import datetime
 from typing import List, Dict, Any
-from pydantic import PrivateAttr
 
-from crewai.tools import BaseTool
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
 
@@ -145,7 +143,7 @@ def _normalize_doc(doc, query: str, search_type: str):
     }
 
 
-class LocalYoutubeSearchTool(BaseTool):
+class LocalYoutubeSearchTool:
     name: str = "local_youtube_search_tool"
     description: str = (
         "주알홍쌤 유튜브 로컬 벡터 DB 검색 도구입니다. "
@@ -155,7 +153,9 @@ class LocalYoutubeSearchTool(BaseTool):
     )
 
     db_path: str = "./chroma_db"
-    _vector_db: Any = PrivateAttr(default=None)
+
+    def __init__(self):
+        self._vector_db: Any = None
 
     def _get_vector_db(self):
         if not os.getenv("OPENAI_API_KEY"):

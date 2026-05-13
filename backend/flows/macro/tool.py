@@ -1,7 +1,6 @@
 import json
 import math
 import yfinance as yf
-from crewai.tools import tool
 
 
 def _to_float(value, default=None):
@@ -131,7 +130,6 @@ def collect_macro_data() -> dict:
         }
 
 
-@tool("Fetch Macro Economy API")
 def fetch_macro_data(query: str = "macro") -> str:
     """
     글로벌 거시경제 지표를 JSON 문자열로 반환합니다.

@@ -8,10 +8,10 @@ from types import SimpleNamespace
 from crewai import Crew, Process, LLM
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from pydantic import BaseModel, Field
+from typing import List
 
 from flows.research.tool import search_tool
-from flows.analysis.agent import AnalysisAgent
-from flows.analysis.task import AnalysisTask
 from flows.accounting.tool import collect_financial_data
 from flows.macro.tool import collect_macro_data
 from flows.youtube.tool import get_guru_youtube_tool
@@ -57,6 +57,25 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 YOUTUBE_UPDATE_TIMEOUT_SECONDS = int(
     os.getenv("YOUTUBE_UPDATE_TIMEOUT_SECONDS", "60")
 )
+
+
+class DirectChartData(BaseModel):
+    period: str = Field(description="T-2, T-1, T")
+    revenue: float = Field(description="revenue")
+    net_profit: float = Field(description="net profit")
+    fcf: float = Field(description="free cash flow")
+
+
+class DirectAnalysisOutput(BaseModel):
+    investment_opinion: str
+    one_line_conclusion: str
+    executive_summary: List[str]
+    macro_analysis: str
+    fundamental_analysis: str
+    momentum_analysis: str
+    guru_analysis: str
+    final_conclusion: str
+    chart_data: List[DirectChartData]
 
 SCORING_CONFIG = {
     "macro": {
@@ -228,7 +247,7 @@ def normalize_kr_ticker(ticker: str):
 
 def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
     """
-    최종 AnalysisAgent에 전달할 입력을 압축한다.
+    최종 분석 structured-output 호출에 전달할 입력을 압축한다.
     너무 긴 원본 JSON을 그대로 넣으면 토큰 초과 또는 Pydantic 파싱 실패 위험이 커진다.
     """
     compact_accounting = {
@@ -268,16 +287,27 @@ class DummyResult:
     raw = "Timeout or Error"
 
 
-class DirectResult:
-    def __init__(self, data):
-        self.raw = json.dumps(data, ensure_ascii=False)
-        self.pydantic = SimpleNamespace(**data)
-        self.pydantic.model_dump = lambda mode=None: dict(data)
-        self.pydantic.model_dump_json = lambda indent=None: json.dumps(
-            data,
+class DirectPayload(SimpleNamespace):
+    def model_dump(self, mode=None, include=None, **kwargs):
+        data = dict(self.__dict__)
+
+        if include:
+            data = {key: data.get(key) for key in include if key in data}
+
+        return data
+
+    def model_dump_json(self, indent=None, include=None, **kwargs):
+        return json.dumps(
+            self.model_dump(include=include),
             ensure_ascii=False,
             indent=indent,
         )
+
+
+class DirectResult:
+    def __init__(self, data):
+        self.raw = json.dumps(data, ensure_ascii=False)
+        self.pydantic = DirectPayload(**data)
 
 
 def safe_kickoff(crew, label: str):
@@ -363,15 +393,9 @@ def create_llms(openai_api_key: str):
 
 
 def create_crew_components(fast_llm, fact_llm, smart_llm):
-    ana_admin = AnalysisAgent(smart_llm)
-
     return {
-        "agents": {
-            "analysis": ana_admin.investment_analyst(),
-        },
-        "tasks": {
-            "analysis": AnalysisTask(),
-        },
+        "agents": {},
+        "tasks": {},
     }
 
 
@@ -1163,17 +1187,162 @@ def run_price_step(acc_data, company: str, state: ReportState | None = None):
     return calculate_price_targets(acc_data, company, state=state)
 
 
+def build_analysis_chart_data(acc_data):
+    revenue = acc_data.get("revenue") if isinstance(acc_data, dict) else []
+    net_income = acc_data.get("net_income") if isinstance(acc_data, dict) else []
+    fcf = acc_data.get("fcf") if isinstance(acc_data, dict) else []
+    periods = ["T-2", "T-1", "T"]
+    chart_data = []
+
+    for index, period in enumerate(periods):
+        chart_data.append(
+            {
+                "period": period,
+                "revenue": float(revenue[index]) if index < len(revenue) and isinstance(revenue[index], (int, float)) else 0.0,
+                "net_profit": float(net_income[index]) if index < len(net_income) and isinstance(net_income[index], (int, float)) else 0.0,
+                "fcf": float(fcf[index]) if index < len(fcf) and isinstance(fcf[index], (int, float)) else 0.0,
+            }
+        )
+
+    return chart_data
+
+
+def build_analysis_fallback(
+    company: str = "",
+    final_opinion: str = "Hold",
+    acc_data=None,
+    macro_json="",
+    research_json="",
+    youtube_json="",
+    error: str | None = None,
+):
+    return {
+        "investment_opinion": final_opinion,
+        "one_line_conclusion": f"{company} 분석 결과는 {final_opinion} 의견입니다.",
+        "executive_summary": [
+            "시스템 산출 투자 의견을 기준으로 리포트를 구성했습니다.",
+            "일부 분석 문장 생성에 실패해 입력 데이터 중심의 fallback을 적용했습니다.",
+            "가격과 차트 데이터는 기존 계산 결과를 유지했습니다.",
+        ],
+        "macro_analysis": truncate_text(macro_json, 900) or "매크로 데이터가 제한적입니다.",
+        "fundamental_analysis": truncate_text(json.dumps(acc_data or {}, ensure_ascii=False), 900),
+        "momentum_analysis": truncate_text(research_json, 700) or "뉴스 데이터가 제한적입니다.",
+        "guru_analysis": truncate_text(youtube_json, 800) or "유튜브 인사이트가 제한적입니다.",
+        "final_conclusion": error or "직접 분석 생성 실패로 fallback 리포트를 작성했습니다.",
+        "chart_data": build_analysis_chart_data(acc_data or {}),
+    }
+
+
+def normalize_analysis_output(data, final_opinion: str, acc_data):
+    if hasattr(data, "model_dump"):
+        data = data.model_dump(mode="json")
+    elif not isinstance(data, dict):
+        data = {}
+
+    normalized = dict(data)
+    normalized["investment_opinion"] = final_opinion
+
+    summary = normalized.get("executive_summary")
+    if not isinstance(summary, list):
+        summary = [str(summary)] if summary else []
+    normalized["executive_summary"] = [str(item) for item in summary[:3]]
+    while len(normalized["executive_summary"]) < 3:
+        normalized["executive_summary"].append("입력 데이터를 기준으로 보수적으로 판단했습니다.")
+
+    for key in [
+        "one_line_conclusion",
+        "macro_analysis",
+        "fundamental_analysis",
+        "momentum_analysis",
+        "guru_analysis",
+        "final_conclusion",
+    ]:
+        if not normalized.get(key):
+            normalized[key] = "데이터가 제한적이므로 보수적으로 해석했습니다."
+
+    chart_data = normalized.get("chart_data")
+    if not isinstance(chart_data, list) or not chart_data:
+        chart_data = build_analysis_chart_data(acc_data or {})
+
+    normalized["chart_data"] = [
+        {
+            "period": str(item.get("period", f"T-{2 - index}") if isinstance(item, dict) else f"T-{2 - index}"),
+            "revenue": float(item.get("revenue", 0) if isinstance(item, dict) and isinstance(item.get("revenue", 0), (int, float)) else 0),
+            "net_profit": float(item.get("net_profit", 0) if isinstance(item, dict) and isinstance(item.get("net_profit", 0), (int, float)) else 0),
+            "fcf": float(item.get("fcf", 0) if isinstance(item, dict) and isinstance(item.get("fcf", 0), (int, float)) else 0),
+        }
+        for index, item in enumerate(chart_data[:3])
+    ]
+
+    return normalized
+
+
+def call_analysis_structured_output(
+    company: str = "",
+    analysis_inputs=None,
+    final_opinion: str = "Hold",
+    target_buy_price=None,
+    defense_price=None,
+):
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    target_buy_price_text = (
+        f"{target_buy_price:,.2f}"
+        if isinstance(target_buy_price, (int, float))
+        else "N/A"
+    )
+    defense_price_text = (
+        f"{defense_price:,.2f}"
+        if isinstance(defense_price, (int, float))
+        else "N/A"
+    )
+
+    completion = client.beta.chat.completions.parse(
+        model=os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o-mini"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a senior investment report writer. Return only structured "
+                    "data matching the schema. Do not override the provided system "
+                    "investment opinion. Do not invent prices, earnings, or YouTube claims."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Company: {company}\n"
+                    f"System investment opinion: {final_opinion}\n"
+                    f"Target buy price: {target_buy_price_text}\n"
+                    f"Defense price: {defense_price_text}\n\n"
+                    f"Accounting data:\n{analysis_inputs['accounting']}\n\n"
+                    f"Macro data:\n{analysis_inputs['macro']}\n\n"
+                    f"Research data:\n{analysis_inputs['research']}\n\n"
+                    f"YouTube data:\n{analysis_inputs['youtube']}\n\n"
+                    "Write concise Korean report fields. chart_data must contain T-2, "
+                    "T-1, T using accounting revenue, net_income as net_profit, and fcf "
+                    "raw numeric values."
+                ),
+            },
+        ],
+        response_format=DirectAnalysisOutput,
+    )
+
+    return completion.choices[0].message.parsed
+
+
 def run_final_analysis_step(
-    analyst_agent,
-    ana_tasks,
-    company: str,
-    acc_data,
-    macro_json,
-    research_json,
-    youtube_json,
-    final_opinion: str,
-    target_buy_price,
-    defense_price,
+    analyst_agent=None,
+    ana_tasks=None,
+    company: str = "",
+    acc_data=None,
+    macro_json="",
+    research_json="",
+    youtube_json="",
+    final_opinion: str = "Hold",
+    target_buy_price=None,
+    defense_price=None,
     state: ReportState | None = None,
 ):
     set_report_step(state, "analysis")
@@ -1184,28 +1353,31 @@ def run_final_analysis_step(
         youtube_json=youtube_json,
     )
 
-    task_analysis = ana_tasks.report_writing_task(
-        agent=analyst_agent,
-        company_name=company,
-        accounting_data=analysis_inputs["accounting"],
-        macro_data=analysis_inputs["macro"],
-        news_data=analysis_inputs["research"],
-        youtube_data=analysis_inputs["youtube"],
-        final_opinion=final_opinion,
-        target_buy_price=target_buy_price,
-        defense_price=defense_price,
-    )
-
-    analysis_crew = Crew(
-        agents=[analyst_agent],
-        tasks=[task_analysis],
-        process=Process.sequential,
-        verbose=False,
-        cache=False,
-    )
-
     logger.debug(f"[{company}] 최종 리포트 생성 중...")
-    return safe_kickoff(analysis_crew, f"{company} Analysis Crew")
+    try:
+        result_data = call_analysis_structured_output(
+            company=company,
+            analysis_inputs=analysis_inputs,
+            final_opinion=final_opinion,
+            target_buy_price=target_buy_price,
+            defense_price=defense_price,
+        )
+        normalized = normalize_analysis_output(result_data, final_opinion, acc_data)
+        return DirectResult(normalized)
+    except Exception as e:
+        logger.exception(f"[{company}] analysis structured output failed; fallback applied: {e}")
+        append_report_error(state, f"analysis structured output failed: {e}")
+        return DirectResult(
+            build_analysis_fallback(
+                company=company,
+                final_opinion=final_opinion,
+                acc_data=acc_data,
+                macro_json=macro_json,
+                research_json=research_json,
+                youtube_json=youtube_json,
+                error=str(e),
+            )
+        )
 
 
 def render_markdown_report(
@@ -1434,8 +1606,6 @@ def run_single_report_pipeline(
         )
 
         final_result = run_final_analysis_step(
-            analyst_agent=agents["analysis"],
-            ana_tasks=tasks["analysis"],
             company=company_name,
             acc_data=acc_data,
             macro_json=macro_context["macro_json"],

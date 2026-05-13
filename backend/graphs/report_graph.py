@@ -195,8 +195,6 @@ def price_node(state: ReportState):
 
 
 def analysis_node(state: ReportState):
-    agents = state.get("agents") or {}
-    tasks = state.get("tasks") or {}
     macro_context = state.get("macro_context") or {}
     ticker = state.get("ticker")
     company_name = state.get("company_name")
@@ -231,8 +229,6 @@ def analysis_node(state: ReportState):
             state=state,
         )
         final_result = run_final_analysis_step(
-            analyst_agent=agents["analysis"],
-            ana_tasks=tasks["analysis"],
             company=company_name,
             acc_data=state.get("acc_data"),
             macro_json=macro_context["macro_json"],

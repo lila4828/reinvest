@@ -71,11 +71,7 @@ def _fetch_macro_point(ticker: str, name: str, reverse_risk: bool = False):
     }
 
 
-@tool("Fetch Macro Economy API")
-def fetch_macro_data(query: str = "macro") -> str:
-    """
-    글로벌 거시경제 지표를 JSON 문자열로 반환합니다.
-    """
+def collect_macro_data() -> dict:
     try:
         krw = _fetch_macro_point("KRW=X", "원/달러 환율")
         nasdaq = _fetch_macro_point("^IXIC", "나스닥 지수", reverse_risk=True)
@@ -114,25 +110,30 @@ def fetch_macro_data(query: str = "macro") -> str:
             "error": None if is_data_valid else "일부 매크로 데이터 수집 실패",
         }
 
-        return json.dumps(result, ensure_ascii=False)
+        return result
 
     except Exception as e:
-        return json.dumps(
-            {
-                "exchange_rate": None,
-                "us_10y_yield": None,
-                "nasdaq_index": None,
-                "wti_price": None,
-                "vix_index": None,
-                "exchange_rate_change_1mo": None,
-                "us_10y_yield_change_1mo": None,
-                "nasdaq_index_change_1mo": None,
-                "wti_price_change_1mo": None,
-                "vix_index_change_1mo": None,
-                "risk_warnings": [],
-                "macro_briefing": "매크로 데이터 수집 실패",
-                "is_data_valid": False,
-                "error": str(e),
-            },
-            ensure_ascii=False,
-        )
+        return {
+            "exchange_rate": None,
+            "us_10y_yield": None,
+            "nasdaq_index": None,
+            "wti_price": None,
+            "vix_index": None,
+            "exchange_rate_change_1mo": None,
+            "us_10y_yield_change_1mo": None,
+            "nasdaq_index_change_1mo": None,
+            "wti_price_change_1mo": None,
+            "vix_index_change_1mo": None,
+            "risk_warnings": [],
+            "macro_briefing": "매크로 데이터 수집 실패",
+            "is_data_valid": False,
+            "error": str(e),
+        }
+
+
+@tool("Fetch Macro Economy API")
+def fetch_macro_data(query: str = "macro") -> str:
+    """
+    글로벌 거시경제 지표를 JSON 문자열로 반환합니다.
+    """
+    return json.dumps(collect_macro_data(), ensure_ascii=False)

@@ -77,15 +77,10 @@ def macro_node(state: ReportState):
         state["current_step"] = "macro"
         return state
 
-    agents = state.get("agents") or {}
-    tasks = state.get("tasks") or {}
-
     try:
         from main import run_macro_step
 
         macro_score, macro_score_reasons, macro_json = run_macro_step(
-            agents["macro"],
-            tasks["macro"],
             state=state,
         )
         state["macro_context"] = {

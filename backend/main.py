@@ -14,8 +14,7 @@ from flows.analysis.agent import AnalysisAgent
 from flows.analysis.task import AnalysisTask
 from flows.accounting.agent import AccountingAgent
 from flows.accounting.task import AccountingTask
-from flows.macro.agent import MacroAgent
-from flows.macro.task import MacroTask
+from flows.macro.tool import collect_macro_data
 from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
 
@@ -353,7 +352,6 @@ def create_llms(openai_api_key: str):
 
 
 def create_crew_components(fast_llm, fact_llm, smart_llm):
-    macro_admin = MacroAgent(fast_llm)
     acc_admin = AccountingAgent(fast_llm)
     res_admin = ResearchAgent(fact_llm)
     yt_admin = YoutubeAgent(fact_llm)
@@ -361,14 +359,12 @@ def create_crew_components(fast_llm, fact_llm, smart_llm):
 
     return {
         "agents": {
-            "macro": macro_admin.macro_economist(),
             "accounting": acc_admin.financial_analyst(),
             "research": res_admin.news_researcher(),
             "youtube": yt_admin.guru_analyst(),
             "analysis": ana_admin.investment_analyst(),
         },
         "tasks": {
-            "macro": MacroTask(),
             "accounting": AccountingTask(),
             "research": ResearchTask(),
             "youtube": YoutubeTask(),
@@ -464,43 +460,48 @@ def update_youtube_vector_db():
         logger.exception(f"유튜브 DB 업데이트 실패. 기존 DB로 진행합니다: {e}")
 
 
-def run_macro_step(macro_agent, macro_tasks, state: ReportState | None = None):
+def build_macro_fallback(error: str | None = None):
+    return {
+        "exchange_rate": None,
+        "us_10y_yield": None,
+        "nasdaq_index": None,
+        "wti_price": None,
+        "vix_index": None,
+        "exchange_rate_change_1mo": None,
+        "us_10y_yield_change_1mo": None,
+        "nasdaq_index_change_1mo": None,
+        "wti_price_change_1mo": None,
+        "vix_index_change_1mo": None,
+        "risk_warnings": [],
+        "macro_briefing": "macro data collection failed; neutral state applied",
+        "is_data_valid": False,
+        "error": error or "macro_result invalid",
+    }
+
+
+def run_macro_step(macro_agent=None, macro_tasks=None, state: ReportState | None = None):
     set_report_step(state, "macro")
     logger.debug("macro analysis started")
 
-    task_macro = macro_tasks.analyze_macro_economy(macro_agent)
+    try:
+        macro_data = collect_macro_data()
+    except Exception as e:
+        logger.exception("macro data collection failed; neutral macro_score applied")
+        append_report_error(state, f"macro data collection failed: {e}")
+        macro_data = build_macro_fallback(str(e))
 
-    macro_crew = Crew(
-        agents=[macro_agent],
-        tasks=[task_macro],
-        verbose=False,
-        cache=False,
-    )
-
-    macro_result = safe_kickoff(macro_crew, "Macro Crew")
-
-    if not macro_result.pydantic or not getattr(macro_result.pydantic, "is_data_valid", False):
+    if not macro_data or not macro_data.get("is_data_valid"):
         logger.warning("macro data collection failed; neutral macro_score applied")
         macro_score = 0
         macro_score_reasons = ["macro data collection failed; neutral score applied"]
-        macro_data = {
-            "exchange_rate": None,
-            "us_10y_yield": None,
-            "nasdaq_index": None,
-            "wti_price": None,
-            "vix_index": None,
-            "macro_briefing": "macro data collection failed; neutral state applied",
-            "is_data_valid": False,
-            "error": "macro_result invalid",
-        }
+        macro_data = {**build_macro_fallback(), **(macro_data or {})}
         macro_json = json.dumps(
             macro_data,
             ensure_ascii=False,
             indent=2,
         )
     else:
-        macro_data = macro_result.pydantic.model_dump(mode="json")
-        macro_json = macro_result.pydantic.model_dump_json(indent=2)
+        macro_json = json.dumps(macro_data, ensure_ascii=False, indent=2)
 
         macro_score, macro_score_reasons = calculate_macro_score(
             exchange_rate=macro_data.get("exchange_rate"),
@@ -1211,15 +1212,13 @@ def run_single_report_pipeline(
     return finalize_state(state)
 
 
-def build_macro_context(agents, tasks):
+def build_macro_context(agents=None, tasks=None):
     macro_state: ReportState = {
         "status": "running",
         "current_step": "macro",
         "errors": [],
     }
     macro_score, macro_score_reasons, macro_json = run_macro_step(
-        agents["macro"],
-        tasks["macro"],
         state=macro_state,
     )
 

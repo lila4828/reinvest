@@ -152,17 +152,13 @@ def research_node(state: ReportState):
 
 
 def youtube_rag_node(state: ReportState):
-    agents = state.get("agents") or {}
-    tasks = state.get("tasks") or {}
     company_name = state.get("company_name")
 
     try:
         from main import run_youtube_rag_step
 
         state["youtube_result"] = run_youtube_rag_step(
-            agents["youtube"],
-            tasks["youtube"],
-            company_name,
+            company=company_name,
             state=state,
         )
     except Exception as e:

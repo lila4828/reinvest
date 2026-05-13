@@ -14,8 +14,7 @@ from flows.analysis.agent import AnalysisAgent
 from flows.analysis.task import AnalysisTask
 from flows.accounting.tool import collect_financial_data
 from flows.macro.tool import collect_macro_data
-from flows.youtube.agent import YoutubeAgent
-from flows.youtube.task import YoutubeTask
+from flows.youtube.tool import get_guru_youtube_tool
 
 # 유튜브 자동화 파이프라인 임포트
 from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
@@ -364,16 +363,13 @@ def create_llms(openai_api_key: str):
 
 
 def create_crew_components(fast_llm, fact_llm, smart_llm):
-    yt_admin = YoutubeAgent(fact_llm)
     ana_admin = AnalysisAgent(smart_llm)
 
     return {
         "agents": {
-            "youtube": yt_admin.guru_analyst(),
             "analysis": ana_admin.investment_analyst(),
         },
         "tasks": {
-            "youtube": YoutubeTask(),
             "analysis": AnalysisTask(),
         },
     }
@@ -865,26 +861,151 @@ def parse_research_result(research_result, company: str, state: ReportState | No
     return sentiment, research_json
 
 
+def build_youtube_fallback(error: str | None = None):
+    data = {
+        "guru_sentiment_score": 50.0,
+        "key_strategy": "N/A",
+        "content_type": "N/A",
+        "insight_date": "N/A",
+        "freshness_level": "N/A",
+        "mindset_summary": "youtube fallback applied",
+        "market_principle": "youtube fallback applied",
+        "risk_control": "youtube fallback applied",
+        "guru_insight_details": "유튜브 데이터 수집 실패로 fallback 처리했습니다.",
+        "is_data_valid": False,
+    }
+
+    if error:
+        data["error"] = error
+
+    return data
+
+
+def parse_youtube_search_result(raw_result):
+    if isinstance(raw_result, str):
+        return json.loads(raw_result)
+
+    if isinstance(raw_result, dict):
+        return raw_result
+
+    return {
+        "is_data_valid": False,
+        "error": f"unexpected youtube search result type: {type(raw_result).__name__}",
+        "selected_docs": [],
+        "content_type_hint": "N/A",
+        "freshness_level": "N/A",
+        "latest_date": "N/A",
+    }
+
+
+def run_local_youtube_search(company: str):
+    return parse_youtube_search_result(get_guru_youtube_tool()._run(company))
+
+
+def score_youtube_docs(content_type: str, freshness_level: str, selected_docs):
+    if content_type != "SPECIFIC" or freshness_level not in ["FRESH", "RECENT"]:
+        return 50.0
+
+    joined = " ".join(
+        f"{doc.get('title', '')} {doc.get('content', '')}".lower()
+        for doc in selected_docs
+        if isinstance(doc, dict)
+    )
+    positive_keywords = [
+        "매수",
+        "좋은 기업",
+        "기회",
+        "성장",
+        "상승",
+        "저평가",
+        "buy",
+        "growth",
+        "opportunity",
+    ]
+    negative_keywords = [
+        "매도",
+        "위험",
+        "리스크",
+        "하락",
+        "고평가",
+        "주의",
+        "sell",
+        "risk",
+        "overvalued",
+    ]
+
+    positive_hits = sum(1 for keyword in positive_keywords if keyword.lower() in joined)
+    negative_hits = sum(1 for keyword in negative_keywords if keyword.lower() in joined)
+    score = 50.0 + min(20, positive_hits * 5) - min(20, negative_hits * 5)
+
+    if freshness_level == "RECENT":
+        score = 50.0 + ((score - 50.0) * 0.6)
+
+    return float(max(35.0, min(65.0, score)))
+
+
+def summarize_youtube_docs(selected_docs, max_docs=3):
+    if not selected_docs:
+        return "유효한 유튜브 인사이트가 없어 중립 fallback으로 처리했습니다."
+
+    lines = []
+    for doc in selected_docs[:max_docs]:
+        date = doc.get("date") or "N/A"
+        title = doc.get("title") or "제목 없음"
+        search_type = doc.get("search_type") or doc.get("theme_hint") or "GENERAL"
+        content = str(doc.get("content") or "")[:220]
+        lines.append(f"{date} / {title} / {search_type}: {content}")
+
+    return "\n".join(lines)
+
+
+def build_youtube_data_from_search(company: str, search_result):
+    selected_docs = search_result.get("selected_docs") or []
+    content_type = search_result.get("content_type_hint") or "N/A"
+    freshness_level = search_result.get("freshness_level") or "N/A"
+    insight_date = search_result.get("latest_date") or "N/A"
+
+    if not search_result.get("is_data_valid") or not selected_docs:
+        return build_youtube_fallback(search_result.get("error") or "no relevant youtube results")
+
+    guru_score = score_youtube_docs(content_type, freshness_level, selected_docs)
+    details = summarize_youtube_docs(selected_docs)
+
+    if content_type == "SPECIFIC":
+        key_strategy = "종목 직접 언급 자료를 참고하되, 스크립트에 없는 가격 판단은 만들지 않습니다."
+    elif content_type in ["MARKET", "MINDSET", "RISK", "PSYCHOLOGY"]:
+        key_strategy = "구루의 시장 원칙과 리스크 관리 관점을 현재 종목 판단에 참고합니다."
+    else:
+        key_strategy = "유의미한 유튜브 인사이트가 제한적이므로 중립으로 반영합니다."
+
+    return {
+        "guru_sentiment_score": guru_score,
+        "key_strategy": key_strategy,
+        "content_type": content_type,
+        "insight_date": insight_date,
+        "freshness_level": freshness_level,
+        "mindset_summary": details,
+        "market_principle": details,
+        "risk_control": details,
+        "guru_insight_details": details[:1200],
+        "is_data_valid": True,
+    }
+
+
 def run_youtube_rag_step(
-    youtube_agent,
-    yt_tasks,
-    company: str,
+    youtube_agent=None,
+    yt_tasks=None,
+    company: str = "",
     state: ReportState | None = None,
 ):
     set_report_step(state, "youtube_rag")
     try:
-        task_yt = yt_tasks.extract_guru_view(youtube_agent, company)
-        crew = Crew(
-            agents=[youtube_agent],
-            tasks=[task_yt],
-            verbose=False,
-            cache=False,
-        )
-        return safe_kickoff(crew, f"{company} YouTube Crew")
+        search_result = run_local_youtube_search(company)
+        return DirectResult(build_youtube_data_from_search(company, search_result))
     except Exception as e:
         logger.exception(f"[{company}] 유튜브 데이터 수집 실패. fallback 처리: {e}")
         append_report_error(state, f"유튜브 데이터 수집 실패: {e}")
-        return DummyResult()
+        return DirectResult(build_youtube_fallback(str(e)))
 
 
 def parse_youtube_result(youtube_result, company: str, state: ReportState | None = None):
@@ -1280,9 +1401,7 @@ def run_single_report_pipeline(
 
         logger.debug(f"[{company_name}] 유튜브 데이터 수집 중...")
         youtube_result = run_youtube_rag_step(
-            agents["youtube"],
-            tasks["youtube"],
-            company_name,
+            company=company_name,
             state=state,
         )
 

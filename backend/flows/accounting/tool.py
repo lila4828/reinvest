@@ -63,44 +63,36 @@ def _get_ma(hist, window):
         return None
 
 
-@tool("Fetch Financial Data API")
-def fetch_financial_data(ticker: str) -> str:
-    """
-    yfinance에서 재무 데이터를 가져와 JSON 문자열로 반환합니다.
-    모든 배열은 과거 -> 최근 순서로 반환합니다.
-    """
+def collect_financial_data(ticker: str) -> dict:
     try:
         stock = yf.Ticker(ticker)
 
         hist = stock.history(period="5y")
         if hist is None or len(hist) < 252:
-            return json.dumps(
-                {
-                    "ticker": ticker,
-                    "is_data_valid": False,
-                    "error": "상장 1년 미만 또는 가격 데이터 부족",
-                    "current_price": None,
-                    "per": None,
-                    "pbr": None,
-                    "dividend_yield": None,
-                    "ma_60": None,
-                    "ma_200": None,
-                    "ma_350": None,
-                    "ma_500": None,
-                    "ma_999": None,
-                    "roe_raw": None,
-                    "roe_label": "N/A",
-                    "revenue": [],
-                    "net_income": [],
-                    "fcf": [],
-                    "debt_to_equity": None,
-                    "operating_margin": None,
-                    "sector": "N/A",
-                    "industry": "N/A",
-                    "financial_summary": "재무 데이터 부족으로 분석 불가",
-                },
-                ensure_ascii=False,
-            )
+            return {
+                "ticker": ticker,
+                "is_data_valid": False,
+                "error": "상장 1년 미만 또는 가격 데이터 부족",
+                "current_price": None,
+                "per": None,
+                "pbr": None,
+                "dividend_yield": None,
+                "ma_60": None,
+                "ma_200": None,
+                "ma_350": None,
+                "ma_500": None,
+                "ma_999": None,
+                "roe_raw": None,
+                "roe_label": "N/A",
+                "revenue": [],
+                "net_income": [],
+                "fcf": [],
+                "debt_to_equity": None,
+                "operating_margin": None,
+                "sector": "N/A",
+                "industry": "N/A",
+                "financial_summary": "재무 데이터 부족으로 분석 불가",
+            }
 
         info = stock.info or {}
         financials = stock.financials
@@ -183,33 +175,39 @@ def fetch_financial_data(ticker: str) -> str:
             ),
         }
 
-        return json.dumps(result, ensure_ascii=False)
+        return result
 
     except Exception as e:
-        return json.dumps(
-            {
-                "ticker": ticker,
-                "is_data_valid": False,
-                "error": str(e),
-                "current_price": None,
-                "per": None,
-                "pbr": None,
-                "dividend_yield": None,
-                "ma_60": None,
-                "ma_200": None,
-                "ma_350": None,
-                "ma_500": None,
-                "ma_999": None,
-                "roe_raw": None,
-                "roe_label": "N/A",
-                "revenue": [],
-                "net_income": [],
-                "fcf": [],
-                "debt_to_equity": None,
-                "operating_margin": None,
-                "sector": "N/A",
-                "industry": "N/A",
-                "financial_summary": "재무 데이터 수집 중 오류 발생",
-            },
-            ensure_ascii=False,
-        )
+        return {
+            "ticker": ticker,
+            "is_data_valid": False,
+            "error": str(e),
+            "current_price": None,
+            "per": None,
+            "pbr": None,
+            "dividend_yield": None,
+            "ma_60": None,
+            "ma_200": None,
+            "ma_350": None,
+            "ma_500": None,
+            "ma_999": None,
+            "roe_raw": None,
+            "roe_label": "N/A",
+            "revenue": [],
+            "net_income": [],
+            "fcf": [],
+            "debt_to_equity": None,
+            "operating_margin": None,
+            "sector": "N/A",
+            "industry": "N/A",
+            "financial_summary": "재무 데이터 수집 중 오류 발생",
+        }
+
+
+@tool("Fetch Financial Data API")
+def fetch_financial_data(ticker: str) -> str:
+    """
+    yfinance에서 재무 데이터를 가져와 JSON 문자열로 반환합니다.
+    모든 배열은 과거 -> 최근 순서로 반환합니다.
+    """
+    return json.dumps(collect_financial_data(ticker), ensure_ascii=False)

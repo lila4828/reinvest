@@ -12,8 +12,7 @@ from flows.research.agent import ResearchAgent
 from flows.research.task import ResearchTask
 from flows.analysis.agent import AnalysisAgent
 from flows.analysis.task import AnalysisTask
-from flows.accounting.agent import AccountingAgent
-from flows.accounting.task import AccountingTask
+from flows.accounting.tool import collect_financial_data
 from flows.macro.tool import collect_macro_data
 from flows.youtube.agent import YoutubeAgent
 from flows.youtube.task import YoutubeTask
@@ -352,20 +351,17 @@ def create_llms(openai_api_key: str):
 
 
 def create_crew_components(fast_llm, fact_llm, smart_llm):
-    acc_admin = AccountingAgent(fast_llm)
     res_admin = ResearchAgent(fact_llm)
     yt_admin = YoutubeAgent(fact_llm)
     ana_admin = AnalysisAgent(smart_llm)
 
     return {
         "agents": {
-            "accounting": acc_admin.financial_analyst(),
             "research": res_admin.news_researcher(),
             "youtube": yt_admin.guru_analyst(),
             "analysis": ana_admin.investment_analyst(),
         },
         "tasks": {
-            "accounting": AccountingTask(),
             "research": ResearchTask(),
             "youtube": YoutubeTask(),
             "analysis": AnalysisTask(),
@@ -532,29 +528,16 @@ def build_failed_report_item(ticker: str, company: str, message: str):
 
 
 def run_accounting_step(
-    accounting_agent,
-    acc_tasks,
-    ticker: str,
-    company: str,
+    accounting_agent=None,
+    acc_tasks=None,
+    ticker: str = "",
+    company: str = "",
     state: ReportState | None = None,
 ):
     set_report_step(state, "accounting")
-    task_accounting = acc_tasks.analyze_financial_statements(
-        accounting_agent,
-        company,
-        ticker,
-    )
+    acc_data = collect_financial_data(ticker)
 
-    financial_crew = Crew(
-        agents=[accounting_agent],
-        tasks=[task_accounting],
-        verbose=False,
-        cache=False,
-    )
-
-    acc_result = safe_kickoff(financial_crew, f"{company} Accounting Crew")
-
-    if not acc_result.pydantic or not getattr(acc_result.pydantic, "is_data_valid", False):
+    if not acc_data or not acc_data.get("is_data_valid"):
         msg = f"[분석 중단] {company}: 재무 데이터 수집 실패 또는 파싱 오류"
         logger.error(msg)
         append_report_error(state, msg)
@@ -562,7 +545,6 @@ def run_accounting_step(
             state["status"] = "failed"
         return None, build_failed_report_item(ticker, company, msg)
 
-    acc_data = acc_result.pydantic.model_dump(mode="json")
     if state is not None:
         state["accounting_data"] = acc_data
 
@@ -1090,10 +1072,8 @@ def run_single_report_pipeline(
         logger.info(f"분석 시작: {company_name} ({ticker})")
 
         acc_data, failed_item = run_accounting_step(
-            agents["accounting"],
-            tasks["accounting"],
-            ticker,
-            company_name,
+            ticker=ticker,
+            company=company_name,
             state=state,
         )
 

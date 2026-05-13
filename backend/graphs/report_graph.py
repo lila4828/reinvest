@@ -103,8 +103,6 @@ def macro_node(state: ReportState):
 
 
 def accounting_node(state: ReportState):
-    agents = state.get("agents") or {}
-    tasks = state.get("tasks") or {}
     ticker = state.get("ticker")
     company_name = state.get("company_name")
 
@@ -112,10 +110,8 @@ def accounting_node(state: ReportState):
         from main import run_accounting_step
 
         acc_data, failed_item = run_accounting_step(
-            agents["accounting"],
-            tasks["accounting"],
-            ticker,
-            company_name,
+            ticker=ticker,
+            company=company_name,
             state=state,
         )
 

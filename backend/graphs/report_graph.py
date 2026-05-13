@@ -133,17 +133,13 @@ def accounting_node(state: ReportState):
 
 
 def research_node(state: ReportState):
-    agents = state.get("agents") or {}
-    tasks = state.get("tasks") or {}
     company_name = state.get("company_name")
 
     try:
         from main import run_research_step
 
         state["research_result"] = run_research_step(
-            agents["research"],
-            tasks["research"],
-            company_name,
+            company=company_name,
             state=state,
         )
     except Exception as e:

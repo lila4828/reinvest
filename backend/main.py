@@ -4,12 +4,12 @@ import logging
 import subprocess
 import sys
 from dotenv import load_dotenv
+from types import SimpleNamespace
 from crewai import Crew, Process, LLM
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
-from flows.research.agent import ResearchAgent
-from flows.research.task import ResearchTask
+from flows.research.tool import search_tool
 from flows.analysis.agent import AnalysisAgent
 from flows.analysis.task import AnalysisTask
 from flows.accounting.tool import collect_financial_data
@@ -268,6 +268,19 @@ class DummyResult:
     pydantic = None
     raw = "Timeout or Error"
 
+
+class DirectResult:
+    def __init__(self, data):
+        self.raw = json.dumps(data, ensure_ascii=False)
+        self.pydantic = SimpleNamespace(**data)
+        self.pydantic.model_dump = lambda mode=None: dict(data)
+        self.pydantic.model_dump_json = lambda indent=None: json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=indent,
+        )
+
+
 def safe_kickoff(crew, label: str):
     try:
         return crew.kickoff()
@@ -351,18 +364,15 @@ def create_llms(openai_api_key: str):
 
 
 def create_crew_components(fast_llm, fact_llm, smart_llm):
-    res_admin = ResearchAgent(fact_llm)
     yt_admin = YoutubeAgent(fact_llm)
     ana_admin = AnalysisAgent(smart_llm)
 
     return {
         "agents": {
-            "research": res_admin.news_researcher(),
             "youtube": yt_admin.guru_analyst(),
             "analysis": ana_admin.investment_analyst(),
         },
         "tasks": {
-            "research": ResearchTask(),
             "youtube": YoutubeTask(),
             "analysis": AnalysisTask(),
         },
@@ -608,26 +618,207 @@ def run_accounting_step(
     return acc_data, None
 
 
+def build_research_fallback(error: str | None = None):
+    data = {
+        "sentiment_score": 50,
+        "momentum_strength": "LOW",
+        "news_summary": "리서치 데이터 수집 실패로 fallback 처리했습니다.",
+        "is_data_valid": False,
+    }
+
+    if error:
+        data["error"] = error
+
+    return data
+
+
+def build_research_queries(company: str):
+    return [
+        f"{company} 최신 뉴스 주가 전망",
+        f"{company} 주가 수급 투자심리 기관 외국인",
+        f"{company} 실적 전망 목표가 증권사 리포트",
+        f"{company} 산업 경쟁사 시장점유율 수요 전망",
+        f"{company} stock news earnings analyst rating outlook",
+    ]
+
+
+def parse_research_search_result(raw_result, query: str):
+    if isinstance(raw_result, str):
+        return json.loads(raw_result)
+
+    if isinstance(raw_result, dict):
+        return raw_result
+
+    return {
+        "is_data_valid": False,
+        "error": f"unexpected research search result type: {type(raw_result).__name__}",
+        "query": query,
+        "results": [],
+    }
+
+
+def run_research_search(query: str):
+    return parse_research_search_result(search_tool._run(query), query)
+
+
+def dedupe_research_results(results):
+    deduped = []
+    seen = set()
+
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+
+        title = str(item.get("title") or "").strip()
+        link = str(item.get("link") or "").strip()
+        snippet = str(item.get("snippet") or "").strip()
+
+        if not title and not snippet:
+            continue
+
+        key = (link or title).lower()
+        if key in seen:
+            continue
+
+        seen.add(key)
+        deduped.append(
+            {
+                "title": title[:300] or "제목 없음",
+                "source": str(item.get("source") or "출처 불명")[:100],
+                "date": str(item.get("date") or "날짜 없음")[:100],
+                "link": link[:500] or "URL 없음",
+                "snippet": snippet[:1000],
+            }
+        )
+
+    return deduped
+
+
+def score_research_results(results):
+    positive_keywords = [
+        "상승",
+        "호재",
+        "수주",
+        "실적 개선",
+        "목표가 상향",
+        "흑자",
+        "성장",
+        "earnings beat",
+        "upgrade",
+        "outperform",
+        "buy",
+        "record",
+    ]
+    negative_keywords = [
+        "하락",
+        "악재",
+        "실적 부진",
+        "목표가 하향",
+        "적자",
+        "소송",
+        "감소",
+        "downgrade",
+        "sell",
+        "miss",
+        "loss",
+        "recall",
+    ]
+
+    joined = " ".join(
+        f"{item.get('title', '')} {item.get('snippet', '')}".lower()
+        for item in results
+        if isinstance(item, dict)
+    )
+    positive_hits = sum(1 for keyword in positive_keywords if keyword.lower() in joined)
+    negative_hits = sum(1 for keyword in negative_keywords if keyword.lower() in joined)
+
+    score = 50 + min(20, positive_hits * 5) - min(20, negative_hits * 5)
+    score = max(15, min(85, score))
+
+    distance = abs(score - 50)
+    if len(results) >= 3 and distance >= 15:
+        strength = "HIGH"
+    elif distance >= 8:
+        strength = "MEDIUM"
+    else:
+        strength = "LOW"
+
+    return score, strength
+
+
+def summarize_research_results(company: str, results):
+    if not results:
+        return "유효한 최신 뉴스 결과가 없어 중립 fallback으로 처리했습니다."
+
+    summary_lines = []
+    for item in results[:3]:
+        title = item.get("title") or "제목 없음"
+        source = item.get("source") or "출처 불명"
+        date = item.get("date") or "날짜 없음"
+        snippet = item.get("snippet") or ""
+        summary_lines.append(
+            f"{company} 관련 뉴스: {title} ({source}, {date}) - {snippet[:180]}"
+        )
+
+    return "\n".join(summary_lines)
+
+
+def collect_research_data(company: str):
+    all_results = []
+    errors = []
+
+    for query in build_research_queries(company):
+        try:
+            search_result = run_research_search(query)
+        except Exception as e:
+            errors.append(f"{query}: {e}")
+            continue
+
+        if not search_result.get("is_data_valid"):
+            error = search_result.get("error")
+            if error:
+                errors.append(f"{query}: {error}")
+            continue
+
+        all_results.extend(search_result.get("results") or [])
+
+    results = dedupe_research_results(all_results)
+
+    if not results:
+        fallback = build_research_fallback(
+            "; ".join(errors) if errors else "no valid news results"
+        )
+        fallback["queries"] = build_research_queries(company)
+        fallback["results"] = []
+        return fallback
+
+    sentiment_score, momentum_strength = score_research_results(results)
+
+    return {
+        "sentiment_score": sentiment_score,
+        "momentum_strength": momentum_strength,
+        "news_summary": summarize_research_results(company, results),
+        "is_data_valid": True,
+        "queries": build_research_queries(company),
+        "result_count": len(results),
+        "results": results[:10],
+        "errors": errors,
+    }
+
+
 def run_research_step(
-    researcher_agent,
-    res_tasks,
-    company: str,
+    researcher_agent=None,
+    res_tasks=None,
+    company: str = "",
     state: ReportState | None = None,
 ):
     set_report_step(state, "research")
     try:
-        task_res = res_tasks.collect_news_task(researcher_agent, company)
-        crew = Crew(
-            agents=[researcher_agent],
-            tasks=[task_res],
-            verbose=False,
-            cache=False,
-        )
-        return safe_kickoff(crew, f"{company} Research Crew")
+        return DirectResult(collect_research_data(company))
     except Exception as e:
         logger.exception(f"[{company}] 리서치 데이터 수집 실패. fallback 처리: {e}")
         append_report_error(state, f"리서치 데이터 수집 실패: {e}")
-        return DummyResult()
+        return DirectResult(build_research_fallback(str(e)))
 
 
 def parse_research_result(research_result, company: str, state: ReportState | None = None):
@@ -1083,9 +1274,7 @@ def run_single_report_pipeline(
 
         logger.debug(f"[{company_name}] 리서치 데이터 수집 중...")
         research_result = run_research_step(
-            agents["research"],
-            tasks["research"],
-            company_name,
+            company=company_name,
             state=state,
         )
 

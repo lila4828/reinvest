@@ -34,7 +34,7 @@ def _format_value(value, suffix=""):
 
 def _format_change(value):
     if value is None:
-        return "1개월 변화율 확인 불가"
+        return "1개월 변동률 확인 불가"
 
     direction = "상승" if value > 0 else "하락" if value < 0 else "보합"
     return f"1개월 {abs(value):.2f}% {direction}"
@@ -98,9 +98,9 @@ def _fetch_macro_point(ticker: str, name: str, reverse_risk: bool = False):
 def _score_exchange_rate(exchange_rate):
     cfg = MACRO_SCORE_CONFIG
     if exchange_rate is None:
-        return 0, "원/달러 환율 데이터가 없어 환율 영향은 중립 처리"
+        return 0, "원/달러 환율 데이터가 없어 환율 영향은 중립으로 처리"
     if exchange_rate >= cfg["exchange_rate_high_risk"]:
-        return -1, f"원/달러 환율 {exchange_rate:,.2f}원은 수입 물가와 외국인 수급 부담 요인"
+        return -1, f"원/달러 환율 {exchange_rate:,.2f}원은 수입 물가 상승 압력과 외국인 수급 부담 요인"
     if 0 < exchange_rate <= cfg["exchange_rate_low_risk"]:
         return 1, f"원/달러 환율 {exchange_rate:,.2f}원은 환율 부담 완화 요인"
     return 0, f"원/달러 환율 {exchange_rate:,.2f}원은 중립권"
@@ -109,7 +109,7 @@ def _score_exchange_rate(exchange_rate):
 def _score_us_10y(us_10y_yield):
     cfg = MACRO_SCORE_CONFIG
     if us_10y_yield is None:
-        return 0, "미국 10년물 금리 데이터가 없어 할인율 영향은 중립 처리"
+        return 0, "미국 10년물 금리 데이터가 없어 할인율 영향은 중립으로 처리"
     if us_10y_yield >= cfg["us_10y_high_risk"]:
         return -1, f"미국 10년물 금리 {us_10y_yield:,.2f}%는 성장주 밸류에이션에 부담"
     if 0 < us_10y_yield <= cfg["us_10y_low_risk"]:
@@ -120,9 +120,9 @@ def _score_us_10y(us_10y_yield):
 def _score_vix(vix_index):
     cfg = MACRO_SCORE_CONFIG
     if vix_index is None:
-        return 0, "미국시장 공포지수 데이터가 없어 위험선호 영향은 중립 처리"
+        return 0, "미국시장 공포지수 데이터가 없어 위험선호 영향은 중립으로 처리"
     if vix_index >= cfg["vix_high_risk"]:
-        return -1, f"미국시장 공포지수 {vix_index:,.2f}는 위험회피 심리 확대 신호"
+        return -1, f"미국시장 공포지수 {vix_index:,.2f}는 위험회피 심리 강화 신호"
     if 0 < vix_index <= cfg["vix_low_risk"]:
         return 1, f"미국시장 공포지수 {vix_index:,.2f}는 안정적인 위험선호 환경"
     return 0, f"미국시장 공포지수 {vix_index:,.2f}는 중립권"
@@ -130,7 +130,7 @@ def _score_vix(vix_index):
 
 def _describe_nasdaq(nasdaq_index, nasdaq_change_1mo):
     if nasdaq_index is None:
-        return "나스닥 지수 데이터가 없어 글로벌 성장주 심리는 확인 제한"
+        return "나스닥 지수 데이터가 없어 글로벌 성장주 심리 확인이 제한적"
     if nasdaq_change_1mo is None:
         return f"나스닥 지수는 {_format_value(nasdaq_index)}로 확인되나 1개월 흐름은 제한적"
     if nasdaq_change_1mo > 3:
@@ -142,14 +142,14 @@ def _describe_nasdaq(nasdaq_index, nasdaq_change_1mo):
 
 def _describe_wti(wti_price, wti_change_1mo):
     if wti_price is None:
-        return "원유 가격 데이터가 없어 비용/물가 압력 판단은 제한적"
+        return "원유 가격 데이터가 없어 비용과 물가 압력 판단은 제한적"
     if wti_change_1mo is None:
         return f"원유 가격은 {_format_value(wti_price, '달러')}로 확인되나 1개월 흐름은 제한적"
     if wti_change_1mo > 5:
         return f"원유 가격은 {_format_change(wti_change_1mo)}으로 물가와 비용 부담 요인"
     if wti_change_1mo < -5:
         return f"원유 가격은 {_format_change(wti_change_1mo)}으로 비용과 인플레이션 부담 완화 요인"
-    return f"원유 가격은 {_format_change(wti_change_1mo)}으로 중립적"
+    return f"원유 가격은 {_format_change(wti_change_1mo)}으로 중립권"
 
 
 def build_macro_interpretation(macro_data: dict):
@@ -265,7 +265,5 @@ def collect_macro_data() -> dict:
 
 
 def fetch_macro_data(query: str = "macro") -> str:
-    """
-    글로벌 거시경제 지표와 해석을 JSON 문자열로 반환합니다.
-    """
+    """글로벌 거시경제 지표와 해석을 JSON 문자열로 반환한다."""
     return json.dumps(collect_macro_data(), ensure_ascii=False)

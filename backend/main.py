@@ -22,6 +22,7 @@ from flows.youtube.tool import run_local_youtube_search
 # YouTube 자동 업데이트 헬퍼
 from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
 from vector_db.youtube_update_guard import filter_processable_video_ids
+from services.price_service import calculate_price_targets
 from services.report_file_service import save_report_files
 from services.report_render_service import render_markdown_report
 from services.summary_service import extract_report_summary
@@ -722,33 +723,11 @@ def decide_final_opinion(
     return final_opinion
 
 
-def calculate_price_targets(acc_data, company: str, state: ReportState | None = None):
-    current_price = acc_data.get("current_price")
-    ma_60 = acc_data.get("ma_60")
-    ma_200 = acc_data.get("ma_200")
-    ma_350 = acc_data.get("ma_350")
+def run_price_step(acc_data, company: str, state: ReportState | None = None):
+    set_report_step(state, "price")
+    current_price, target_buy_price, defense_price = calculate_price_targets(acc_data)
 
-    if isinstance(current_price, (int, float)) and current_price > 0:
-        if (
-            isinstance(ma_60, (int, float))
-            and isinstance(ma_200, (int, float))
-            and ma_60 > ma_200
-            and ma_200 > 0
-        ):
-            target_buy_price = ma_60
-            defense_price = ma_200
-        else:
-            target_buy_price = current_price * 0.96
-
-            candidates = [
-                x for x in [ma_60, ma_200, ma_350]
-                if isinstance(x, (int, float)) and 0 < x < target_buy_price
-            ]
-
-            defense_price = max(candidates) if candidates else target_buy_price * 0.92
-    else:
-        target_buy_price = None
-        defense_price = None
+    if not isinstance(current_price, (int, float)) or current_price <= 0:
         logger.warning(f"[{company}] price data missing; skip price target")
 
     if state is not None:
@@ -759,11 +738,6 @@ def calculate_price_targets(acc_data, company: str, state: ReportState | None = 
         }
 
     return current_price, target_buy_price, defense_price
-
-
-def run_price_step(acc_data, company: str, state: ReportState | None = None):
-    set_report_step(state, "price")
-    return calculate_price_targets(acc_data, company, state=state)
 
 
 def build_analysis_chart_data(acc_data):

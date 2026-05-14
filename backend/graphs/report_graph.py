@@ -78,7 +78,7 @@ def macro_node(state: ReportState):
         return state
 
     try:
-        from main import run_macro_step
+        from services.report_step_service import run_macro_step
 
         macro_score, macro_score_reasons, macro_json = run_macro_step(
             state=state,
@@ -107,7 +107,7 @@ def accounting_node(state: ReportState):
     company_name = state.get("company_name")
 
     try:
-        from main import run_accounting_step
+        from services.report_step_service import run_accounting_step
 
         acc_data, failed_item = run_accounting_step(
             ticker=ticker,
@@ -136,7 +136,7 @@ def research_node(state: ReportState):
     company_name = state.get("company_name")
 
     try:
-        from main import run_research_step
+        from services.report_step_service import run_research_step
 
         state["research_result"] = run_research_step(
             company=company_name,
@@ -155,7 +155,7 @@ def youtube_rag_node(state: ReportState):
     company_name = state.get("company_name")
 
     try:
-        from main import run_youtube_rag_step
+        from services.report_step_service import run_youtube_rag_step
 
         state["youtube_result"] = run_youtube_rag_step(
             company=company_name,
@@ -174,7 +174,7 @@ def price_node(state: ReportState):
     company_name = state.get("company_name")
 
     try:
-        from main import run_price_step
+        from services.report_step_service import run_price_step
 
         current_price, target_buy_price, defense_price = run_price_step(
             state.get("acc_data"),
@@ -200,12 +200,12 @@ def analysis_node(state: ReportState):
     company_name = state.get("company_name")
 
     try:
-        from main import (
+        from services.report_render_service import render_markdown_report
+        from services.report_step_service import (
             append_report_error,
             decide_final_opinion,
             parse_research_result,
             parse_youtube_result,
-            render_markdown_report,
             run_final_analysis_step,
         )
 

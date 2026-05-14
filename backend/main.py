@@ -22,6 +22,7 @@ from flows.youtube.tool import run_local_youtube_search
 # YouTube 자동 업데이트 헬퍼
 from vector_db.fetch_latest_youtube_ids import fetch_all_latest_youtube_ids
 from vector_db.youtube_update_guard import filter_processable_video_ids
+from services.investment_opinion_service import calculate_investment_opinion
 from services.price_service import calculate_price_targets
 from services.report_file_service import save_report_files
 from services.report_output_service import build_output_report_item, build_run_summary_output
@@ -675,41 +676,19 @@ def decide_final_opinion(
 ):
     set_report_step(state, "opinion")
     fundamental_score = acc_data.get("fundamental_score", 0)
-
-    total_score = fundamental_score + macro_score + sentiment
-
-    # total_score 범위
-    # fundamental_score: -3 ~ +3
-    # macro_score: -3 ~ +3
-    # sentiment: -1 ~ +1
-    # 총합: -7 ~ +7
-    # 50점을 중립으로 잡고, 1점당 약 7점씩 이동
-    system_score = max(0, min(100, 50 + (total_score * 7)))
-
-    if guru_weight > 0:
-        system_weight = SCORING_CONFIG["final"]["system_weight"]
-    else:
-        system_weight = 1.0
-
-    final_weighted_score = (system_score * system_weight) + (guru_score * guru_weight)
-
-    final_cfg = SCORING_CONFIG["final"]
-
-    if final_weighted_score >= final_cfg["strong_buy_cutoff"]:
-        final_opinion = "Strong Buy"
-    elif final_weighted_score >= final_cfg["buy_cutoff"]:
-        final_opinion = "Buy"
-    elif final_weighted_score >= final_cfg["hold_cutoff"]:
-        final_opinion = "Hold"
-    else:
-        final_opinion = "Sell"
-
-    if guru_score >= 65:
-        guru_sentiment_label = "Bullish"
-    elif guru_score <= 35:
-        guru_sentiment_label = "Bearish"
-    else:
-        guru_sentiment_label = "Neutral"
+    opinion_result = calculate_investment_opinion(
+        fundamental_score=fundamental_score,
+        macro_score=macro_score,
+        sentiment=sentiment,
+        guru_score=guru_score,
+        guru_weight=guru_weight,
+        final_config=SCORING_CONFIG["final"],
+    )
+    final_opinion = opinion_result["final_opinion"]
+    system_score = opinion_result["system_score"]
+    system_weight = opinion_result["system_weight"]
+    final_weighted_score = opinion_result["final_weighted_score"]
+    guru_sentiment_label = opinion_result["guru_sentiment_label"]
 
     logger.debug(
         f"[시스템 채점] {company} | 시스템 점수: {system_score}점 "

@@ -10,6 +10,7 @@ from logging.handlers import RotatingFileHandler
 
 from flows.research.tool import search_tool
 from flows.accounting.tool import collect_financial_data
+from flows.accounting.tool import calculate_fundamental_score as calculate_accounting_fundamental_score
 from flows.analysis.tool import call_analysis_structured_output
 from flows.macro.tool import collect_macro_data
 from flows.macro.tool import build_macro_fallback as build_macro_tool_fallback
@@ -141,50 +142,12 @@ def calculate_macro_score(exchange_rate, us_10y_yield, vix_index):
 
 
 def calculate_fundamental_score(net_income, fcf, revenue, debt_to_equity=None):
-    if (
-        not is_valid_numeric_series(net_income)
-        or not is_valid_numeric_series(fcf)
-        or not is_valid_numeric_series(revenue)
-    ):
-        return 0, ["financial series data invalid"]
-
-    score = 0
-    reasons = []
-
-    # 순이익
-    if net_income[-1] > 0 and net_income[-1] >= net_income[-2]:
-        score += 1
-        reasons.append("recent net income positive or improved")
-    elif net_income[-1] < 0:
-        score -= 1
-        reasons.append("recent net income is negative")
-
-    # FCF
-    if fcf[-1] > 0:
-        score += 1
-        reasons.append("recent FCF positive")
-    elif fcf[-1] < 0:
-        score -= 1
-        reasons.append("recent FCF negative")
-
-    # 매출
-    if revenue[-1] > revenue[-2]:
-        score += 1
-        reasons.append("recent revenue declined")
-    elif revenue[-1] < revenue[-2]:
-        score -= 1
-        reasons.append("recent revenue growth")
-
-    # 부채비율
-    debt_warning_cutoff = SCORING_CONFIG["financial"]["debt_warning_cutoff"]
-    if isinstance(debt_to_equity, (int, float)) and debt_to_equity > debt_warning_cutoff:
-        score -= 1
-        reasons.append(f"debt-to-equity {debt_to_equity}% exceeds 100%")
-
-    # 과도한 영향 방지: -3 ~ +3으로 제한
-    score = max(-3, min(3, score))
-
-    return score, reasons
+    return calculate_accounting_fundamental_score(
+        net_income=net_income,
+        fcf=fcf,
+        revenue=revenue,
+        debt_to_equity=debt_to_equity,
+    )
 
 
 def get_price_unit(ticker: str):
@@ -558,12 +521,16 @@ def run_accounting_step(
             state["status"] = "failed"
         return None, build_failed_report_item(ticker, company, msg)
 
-    fund_score, fund_score_reasons = calculate_fundamental_score(
-        net_income=net_income,
-        fcf=fcf,
-        revenue=revenue,
-        debt_to_equity=debt_to_equity,
-    )
+    fund_score = acc_data.get("fundamental_score")
+    fund_score_reasons = acc_data.get("fundamental_score_reasons")
+
+    if fund_score is None or not fund_score_reasons:
+        fund_score, fund_score_reasons = calculate_fundamental_score(
+            net_income=net_income,
+            fcf=fcf,
+            revenue=revenue,
+            debt_to_equity=debt_to_equity,
+        )
 
     acc_data["status"] = "PASS"
     acc_data["fundamental_score"] = fund_score

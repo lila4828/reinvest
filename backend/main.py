@@ -56,6 +56,10 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 YOUTUBE_UPDATE_TIMEOUT_SECONDS = int(
     os.getenv("YOUTUBE_UPDATE_TIMEOUT_SECONDS", "60")
 )
+REPORT_GENERATION_YOUTUBE_UPDATE_ENABLED = (
+    os.getenv("REPORT_GENERATION_YOUTUBE_UPDATE_ENABLED", "false").lower()
+    in ["1", "true", "yes", "on"]
+)
 
 
 class DirectChartData(BaseModel):
@@ -399,6 +403,10 @@ def run_python_module_call_with_timeout(step_name: str, code: str, timeout_secon
 
 
 def update_youtube_vector_db():
+    if not REPORT_GENERATION_YOUTUBE_UPDATE_ENABLED:
+        logger.info("리포트 생성 중 YouTube DB 업데이트는 비활성화되어 기존 Chroma DB를 사용합니다.")
+        return
+
     logger.debug("[0단계] YouTube 최신 영상 확인...")
 
     try:

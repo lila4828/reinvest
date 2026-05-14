@@ -2,7 +2,7 @@
 
 ## 1. Current Direct Runtime Architecture
 
-The active runtime is CrewAI-free. FastAPI calls `pipelines/report_pipeline.py`, which delegates to `main.run_financial_crew()`. The report flow is orchestrated by LangGraph in `graphs/report_graph.py` with `ReportState` as the shared state object.
+The active runtime is CrewAI-free. FastAPI receives report requests, `pipelines/report_pipeline.py` calls `main.run_financial_crew()`, and LangGraph in `graphs/report_graph.py` orchestrates the stock report flow with `ReportState`.
 
 Current node order:
 
@@ -18,242 +18,432 @@ validate_input
 -> finalize
 ```
 
-Current implementation split:
+Current active execution model:
 
-- Macro: direct `collect_macro_data()` call in `flows/macro/tool.py`, then Python scoring in `main.calculate_macro_score()`.
-- Accounting: direct `collect_financial_data()` call in `flows/accounting/tool.py`, then Python validation and scoring in `main.run_accounting_step()`.
-- Research: direct Serper news search through `flows/research/tool.py`, then Python dedupe, scoring, and summary assembly in `main.py`.
-- Youtube RAG: direct local Chroma search through `flows/youtube/tool.py`, then Python content type, freshness, and score handling in `main.py`.
-- Analysis: direct OpenAI structured-output call in `main.call_analysis_structured_output()`, normalized by `main.normalize_analysis_output()`, rendered by `main.render_markdown_report()`.
+- Macro uses direct `collect_macro_data()` plus Python `macro_score` rules.
+- Accounting uses direct `collect_financial_data()` plus Python validation, scoring, and failed-report fallback.
+- Research uses direct Serper/news search, Python normalization, dedupe, and sentiment scoring.
+- Youtube RAG uses direct local YouTube search over `langchain_chroma.Chroma` read path.
+- Analysis uses direct OpenAI structured output, then deterministic Python markdown rendering.
 
-Legacy `agent.py` and `task.py` files remain as reference material only. They are not part of active runtime imports.
+Legacy `backend/flows/*/agent.py` and `backend/flows/*/task.py` files remain reference material only. They must not be imported or executed to restore quality.
 
 ## 2. Old CrewAI Prompt Responsibilities By Step
 
-The old CrewAI prompts carried more than schema definitions. They encoded analyst behavior, hallucination control, source policy, scoring boundaries, recency rules, and wording constraints.
+The old Agent/Task prompts did more than call tools. They encoded rules about evidence, interpretation boundaries, source quality, no-hallucination behavior, and report-writing tone.
 
-Important note: several legacy prompt files now contain mojibake, so exact Korean wording cannot be fully trusted from the current source alone. The responsibility analysis below is based on readable identifiers, schemas, surviving English tokens, direct runtime code, and repeated rule structure visible in the legacy files.
+Important caution:
+
+- Several legacy prompt files are mojibake-corrupted, so old text should not be copied directly.
+- Only stable responsibilities should be extracted.
+- CrewAI execution should not return.
+- Facts, final scores, prices, and final investment opinion must stay system-controlled.
 
 ## 3. New Direct Implementation Behavior By Step
 
-The new direct implementation is technically simpler and more deterministic, but it no longer has the same amount of natural-language analyst instruction at every step.
+The direct implementation is more deterministic and easier to validate, but some analyst instructions became thinner:
 
-The biggest behavioral shift is:
+- Direct tools return raw or lightly interpreted data.
+- Python rules calculate scores and final opinion.
+- The final Analysis structured-output prompt carries most narrative responsibility.
+- Markdown headings, price table, and chart data are deterministic Python output.
 
-- Old CrewAI steps asked LLM agents to transform tool output into rich structured interpretation while following many guardrails.
-- New direct steps mostly preserve raw data and compute simple scores with Python rules.
-- The final Analysis structured-output call now carries most of the writing burden, but its prompt is much shorter than the old AnalysisTask prompt.
+This is the right runtime shape. The quality restoration work should add safe constraints around it, not bring back Agent/Task execution.
 
 ## 4. Missing Instructions Or Quality Gaps
 
-Likely lost or weakened instructions:
+Likely lost during migration:
 
-- Do not invent missing facts, titles, links, dates, prices, targets, or claims.
-- Use only tool-returned fields as evidence.
-- Keep news financial numbers out of final financial claims when they conflict with accounting data.
-- Treat YouTube as investment philosophy and risk-management context, not a price-target source.
-- Distinguish stock-specific YouTube mentions from general market, mindset, risk, or psychology content.
-- Apply recency rules explicitly to news and YouTube.
-- Convert large financial values into human-readable Korean or US units in prose.
-- Keep section lengths controlled and avoid vague filler.
-- Preserve the system-calculated investment opinion, price guide, and defensive line.
-- Explain risk separately instead of turning every Buy into an overly optimistic report.
+- Senior analyst tone and section depth.
+- Section-specific reasoning instead of generic summary prose.
+- Explicit explanation of how system score and guru insight combine.
+- Stronger distinction between system-calculated opinion and YouTube/guru context.
+- News synthesis rather than raw news listing.
+- YouTube content-type handling for direct stock mention versus general principle.
+- Explicit missing-data language.
+- Stronger ban on invented numbers, dates, news, target prices, or YouTube comments.
+- Better risk discussion inside final judgement.
+
+Do not restore these by letting the LLM decide facts. Restore them through deterministic preprocessing where possible and prompt constraints only where prose synthesis is required.
 
 ## 5. Fields Carrying Interpretation Vs Raw Data
 
-Raw or mostly raw data fields:
+Raw or mostly raw fields:
 
-- `macro_json`: macro indicators, 1-month changes, warnings, validity.
-- `acc_data`: yfinance-derived values, moving averages, revenue, net_income, fcf, valuation metrics.
-- `research_json.results`: normalized news titles, sources, dates, links, snippets.
-- `youtube_json.selected_docs` or derived details: local Chroma search results and metadata.
-- `chart_data`: raw numeric chart fields for frontend compatibility.
+- `macro_json`: exchange rate, US 10Y yield, Nasdaq, WTI, VIX, changes, warnings, validity.
+- `acc_data`: yfinance-derived price, valuation, moving averages, revenue, net income, FCF, debt, margin, sector, industry.
+- `research_json.results`: titles, sources, dates, links, snippets.
+- `youtube_json.selected_docs` or derived details: local Chroma search documents and metadata.
+- `current_price`, `target_buy_price`, `defense_price`: deterministic price guide values.
+- `chart_data`: frontend-compatible raw numeric data.
 
-Interpretation fields:
+System-controlled interpretation:
 
-- `macro_score`, `macro_score_reasons`: Python interpretation of macro risk.
-- `fundamental_score`, `fundamental_score_reasons`: Python interpretation of financial quality.
-- `sentiment`: Python mapping from research score to positive, neutral, or negative.
-- `guru_score`, `guru_weight`: Python mapping from YouTube content type and freshness.
-- `investment_opinion`: system-calculated final opinion.
-- `one_line_conclusion`, `executive_summary`, `macro_analysis`, `fundamental_analysis`, `momentum_analysis`, `guru_analysis`, `final_conclusion`: generated narrative from direct OpenAI structured output.
+- `macro_score`
+- `macro_score_reasons`
+- `fundamental_score`
+- `fundamental_score_reasons`
+- `sentiment`
+- `guru_score`
+- `guru_weight`
+- `investment_opinion`
 
-Quality parity depends mostly on improving interpretation prompts and deterministic helper summaries without changing public API or markdown format.
+LLM-written interpretation:
+
+- `one_line_conclusion`
+- `executive_summary`
+- `macro_analysis`
+- `fundamental_analysis`
+- `momentum_analysis`
+- `guru_analysis`
+- `final_conclusion`
+
+The LLM may explain supplied data, but it must not create new facts or override system-controlled values.
 
 ## 6. Analysis Prompt Parity Gap
 
-Old Analysis responsibilities:
+Old Analysis Agent/Task did:
 
-- Preserve system-calculated `investment_opinion`.
-- Do not freely override price guide values.
-- Use accounting data as the only source for financial numbers.
-- Do not use news or YouTube to invent revenue, profit, EPS, target prices, or valuation numbers.
-- Convert large financial values into readable Korean stock or US stock units.
-- Keep chart data in T-2, T-1, T order using raw accounting arrays.
-- Interpret YouTube differently by `content_type`.
-- For non-specific YouTube content, translate it into general investment attitude or risk-control guidance instead of direct buy/sell recommendation.
-- Use exactly three executive summary bullets.
-- Avoid markdown inside structured-output fields.
-- Avoid unsupported claims.
+- Wrote like a senior investment analyst, not a generic summarizer.
+- Preserved system-calculated `investment_opinion`.
+- Used supplied price guide without changing it.
+- Used accounting data as the only financial-number source.
+- Treated news as business momentum, not audited financial truth.
+- Treated YouTube as guru insight, strategy, psychology, and risk context.
+- Distinguished stock-specific YouTube mentions from general market or mindset principles.
+- Required exactly three executive summary bullets.
+- Kept `one_line_conclusion` concise.
+- Avoided markdown inside schema fields.
+- Avoided unsupported claims and invented data.
 
-Current direct Analysis behavior:
+Current direct Analysis does:
 
-- Preserves `investment_opinion` by normalization.
-- Uses a short system prompt: structured data only, do not override opinion, do not invent prices, earnings, or YouTube claims.
-- Passes compacted accounting, macro, research, and YouTube JSON.
-- Requests concise Korean fields and chart data mapping.
+- Calls OpenAI structured output directly.
+- Normalizes `investment_opinion` back to the system value after the call.
+- Passes compacted macro, accounting, research, and YouTube JSON.
+- Renders markdown with deterministic Python.
 
-Parity gap:
+What may have been lost:
 
-- The current prompt is too short to reproduce the old report style.
-- It does not fully encode YouTube content-type interpretation rules.
-- It does not strongly instruct unit conversion in prose.
-- It does not strongly separate risk commentary from investment opinion.
-- It does not define expected section depth, tone, evidence style, or source limitations as carefully as the old task.
+- Report tone and depth.
+- Rich section-specific reasoning.
+- Explicit final judgement logic.
+- Separate downside-risk discussion.
+- Strong YouTube content-type interpretation.
+- Clear instruction to avoid vague filler.
+
+Restore as deterministic rules:
+
+- Force `investment_opinion` to the system value.
+- Keep `chart_data` derived from accounting arrays.
+- Keep markdown headings and price table in Python.
+- Keep price units in Python.
+- Keep final opinion calculation in Python.
+
+Restore as prompt/writing constraints:
+
+- Senior analyst tone.
+- Section-specific reasoning.
+- Exactly three executive summary items.
+- Concise one-line conclusion.
+- Explain how macro, accounting, news, YouTube, price guide, and risks support the system opinion.
+- State missing data cautiously.
+- Do not repeat the same sentence across sections.
+
+Must remain system-controlled:
+
+- `investment_opinion`
+- current price
+- target buy price
+- defense price
+- financial numbers
+- chart data
+- final markdown headings
+
+Do not copy blindly:
+
+- Any mojibake-corrupted Korean prompt text.
+- Any old instruction that lets LLM compute prices, scores, or final opinion.
+- Any old Agent/Task execution pattern.
 
 ## 7. Macro Parity Gap
 
-Old Macro responsibilities:
+Old Macro Agent/Task did:
 
-- Use the macro data tool output exactly.
-- Do not invent or adjust numeric values.
-- Preserve null values.
-- Do not calculate market score in the LLM step; Python rules handle scoring.
-- Map tool JSON into a schema containing exchange rate, US 10-year yield, Nasdaq, WTI, VIX, monthly changes, warnings, briefing, validity, and error.
+- Used the macro data tool output.
+- Mapped tool JSON into macro schema.
+- Preserved null values.
+- Avoided inventing or adjusting macro indicator values.
+- Left score calculation to Python rules.
+- Produced macro briefing and validity fields.
 
-Current direct Macro behavior:
+Current direct Macro does:
 
 - Calls `collect_macro_data()` directly.
-- Calculates `macro_score` in Python.
+- Calculates `macro_score` and `macro_score_reasons` in Python.
 - Runs once per batch and injects macro context into each stock state.
 
-Parity gap:
+What may have been lost:
 
-- The direct tool has some static Korean strings that should be reviewed for readability before prompt restoration.
-- The macro briefing is mechanically assembled and may be less analyst-like than the old agent output.
-- Risk warning wording may be less explanatory.
+- More readable macro briefing.
+- Clear pressure/support explanation for FX, US 10Y yield, Nasdaq, WTI, and VIX.
+- Better missing-data language.
+
+Restore as deterministic rules:
+
+- Keep macro batch-once behavior.
+- Keep score thresholds in Python.
+- Keep `macro_score_reasons` in Python.
+- Keep missing-data fallback deterministic.
+
+Restore as prompt/writing constraints:
+
+- In Analysis, explain whether each macro factor is pressure, support, or neutral.
+- Avoid pretending missing macro values are known.
+
+Must remain system-controlled:
+
+- Macro values.
+- Macro score.
+- Macro score reasons.
+- Macro validity.
+
+Do not copy blindly:
+
+- Mojibake macro labels.
+- Any LLM instruction that asks the model to calculate macro scores.
 
 ## 8. Accounting Parity Gap
 
-Old Accounting responsibilities:
+Old Accounting Agent/Task did:
 
-- Use financial data tool output exactly.
-- Preserve array order from past to recent.
-- Do not invent or adjust numeric values.
-- Do not decide PASS or FAIL in the LLM; Python rules handle validation.
-- Return schema fields such as current price, PER, PBR, dividend yield, moving averages, ROE, revenue, net income, FCF, debt ratio, margin, sector, industry, summary, validity, and error.
+- Used the financial data tool output exactly.
+- Preserved revenue, net income, and FCF array order from past to recent.
+- Avoided inventing or correcting numeric values.
+- Left PASS/FAIL and investment eligibility checks to Python rules.
+- Returned current price, PER, PBR, dividend yield, moving averages, ROE, revenue, net income, FCF, debt ratio, margin, sector, industry, summary, validity, and error.
 
-Current direct Accounting behavior:
+Current direct Accounting does:
 
-- Calls yfinance directly through `collect_financial_data()`.
+- Calls `collect_financial_data()` directly.
 - Configures a writable yfinance cache directory.
-- Applies Python validation for insufficient data, negative income, negative FCF, zero revenue, and high debt ratio.
-- Calculates `fundamental_score` and price guide separately.
+- Validates data sufficiency.
+- Builds failed report items for invalid or failing financial cases.
+- Calculates `fundamental_score` and `fundamental_score_reasons`.
+- Leaves price target calculation to `run_price_step()`.
 
-Parity gap:
+What may have been lost:
 
-- The current data summary is short and may contain less explanatory context.
-- Some Python score reason wording should be audited for correctness and clarity.
-- The old report-writing prompt included stronger guidance for unit conversion and avoiding raw noisy floats in prose.
+- Richer revenue trend interpretation.
+- Richer net income and FCF quality explanation.
+- Clearer explanation of data shortage versus financial weakness.
+- Cleaner human-readable unit guidance inside final prose.
+
+Restore as deterministic rules:
+
+- Keep failed-report fallback deterministic.
+- Keep financial validation in Python.
+- Keep `fundamental_score_reasons` in Python.
+- Keep chart data from raw arrays.
+- Keep price guide calculation in Python.
+
+Restore as prompt/writing constraints:
+
+- Explain revenue trend, profit trend, FCF quality, debt, margin, valuation, and moving-average context using only `acc_data`.
+- Do not use news snippets as audited financial numbers.
+- Use cautious wording when accounting fields are missing.
+
+Must remain system-controlled:
+
+- `acc_data`
+- `fundamental_score`
+- `fundamental_score_reasons`
+- `failed_report_item`
+- `current_price`
+- `target_buy_price`
+- `defense_price`
+- `chart_data`
+
+Do not copy blindly:
+
+- Any old instruction that allows LLM to decide PASS/FAIL.
+- Any old instruction that allows LLM to modify financial numbers.
 
 ## 9. Research Parity Gap
 
-Old Research responsibilities:
+Old Research Agent/Task did:
 
-- Run multiple query types: recent news, price/supply/investor psychology, earnings or broker reports, industry and competitors, English global news.
-- Use fallback queries if results are weak.
-- Validate that title or snippet is relevant to the company.
-- Use only real search result title, source, date, link, and snippet.
-- Avoid unsupported article titles, URLs, broker names, target prices, and dates.
-- Exclude vague blogs, ads, low-quality articles, and duplicate content.
-- Avoid using financial numbers from news as accounting facts.
-- Score sentiment in defined ranges and set momentum strength.
-- Keep summary length controlled.
+- Ran multiple query categories: recent news, price/supply/investor psychology, earnings or broker reports, industry and competitors, and English global news.
+- Used fallback queries when results were weak.
+- Validated relevance against company name.
+- Used only real title, source, date, link, and snippet fields.
+- Excluded weak, duplicate, or unsupported results.
+- Avoided invented broker names, target prices, URLs, and dates.
+- Avoided treating news financial numbers as accounting facts.
+- Produced sentiment score, momentum strength, summary, and validity.
 
-Current direct Research behavior:
+Current direct Research does:
 
-- Builds a similar query list.
-- Calls Serper directly.
+- Builds similar query categories.
+- Calls Serper/news directly.
 - Normalizes and deduplicates results.
-- Uses keyword hits to score sentiment.
-- Produces a compact summary from top results.
+- Scores sentiment with keyword rules.
+- Produces a compact news summary and result list.
 
-Parity gap:
+What may have been lost:
 
-- Relevance filtering is weaker than the old instruction set.
-- Quality filtering for weak sources, ads, and blogs is limited.
-- Sentiment scoring is keyword-based and may miss context.
-- The old prompt had explicit instructions to avoid unsupported broker details and target prices; direct code should preserve that in future summary formatting.
+- Strong source-quality filtering.
+- Better relevance checks.
+- Nuanced positive, negative, and neutral issue classification.
+- Better synthesis of news into business momentum.
+
+Restore as deterministic rules:
+
+- Improve relevance and duplicate filtering.
+- Classify positive, negative, and neutral issue hits using explicit keyword/rule lists.
+- Keep no-result fallback deterministic.
+- Keep sentiment mapping deterministic.
+
+Restore as prompt/writing constraints:
+
+- In Analysis, synthesize business momentum instead of listing raw news.
+- Mention source/date only when provided.
+- Do not invent or infer broker details beyond supplied data.
+- Treat news as market signal, not audited accounting evidence.
+
+Must remain system-controlled:
+
+- Serper result fields.
+- `sentiment_score`
+- `sentiment`
+- no-result fallback.
+
+Do not copy blindly:
+
+- Any old prompt text that implies the LLM can fabricate missing article details.
+- Any old scoring behavior not backed by deterministic input.
 
 ## 10. Youtube RAG Parity Gap
 
-Old Youtube responsibilities:
+Old Youtube Agent/Task did:
 
-- Search local YouTube transcripts.
-- Separate stock-specific content from market, mindset, risk, psychology, and no-data content.
-- Use selected transcript docs only.
-- Do not invent prices, target prices, earnings numbers, or direct guru statements.
-- Treat non-specific content as investment philosophy or risk-control guidance, not direct stock recommendation.
-- Apply freshness levels and date rules.
-- Keep guru score neutral for non-specific content.
-- Provide key strategy, mindset summary, market principle, risk control, details, validity.
+- Searched local YouTube transcript data.
+- Distinguished `SPECIFIC`, `MARKET`, `MINDSET`, `RISK`, `PSYCHOLOGY`, and no-data cases.
+- Used selected transcript docs only.
+- Treated non-specific content as general principle, not direct stock recommendation.
+- Applied date and freshness rules.
+- Kept guru score neutral for non-specific content.
+- Produced strategy, mindset, market principle, risk control, insight details, and validity.
 
-Current direct Youtube behavior:
+Current direct Youtube RAG does:
 
-- Uses `langchain_chroma.Chroma` through local search.
-- Performs Plan A company-specific search and Plan B market or mindset fallback search.
-- Computes freshness and content type hints.
-- Builds a compact direct result with score and details.
+- Uses local Chroma retrieval through `langchain_chroma.Chroma`.
+- Runs Plan A stock-specific search.
+- Runs Plan B market, mindset, and risk fallback search.
+- Calculates freshness, content type hint, guru score, and guru weight.
+- Builds a direct result for Analysis.
 
-Parity gap:
+What may have been lost:
 
-- Many interpretation guide strings in `flows/youtube/tool.py` appear mojibake-corrupted and should be cleaned before relying on them as prompt context.
-- The direct builder collapses several fields into the same `details` text, reducing nuance.
-- Old prompt had more careful content-type-specific writing rules than the current direct summary.
-- Current keyword scoring is simpler than old LLM interpretation.
+- Nuanced content-type-specific prose.
+- Separate strategy, psychology, risk, and market-principle summaries.
+- Strong guardrails against turning general principles into direct recommendations.
+- Richer no-result fallback language.
 
-## 11. Safe Restoration Order
+Restore as deterministic rules:
+
+- Keep content type and freshness classification deterministic.
+- Keep guru score neutral unless content is recent and stock-specific.
+- Keep selected docs as the only evidence source.
+- Keep no-result fallback deterministic.
+
+Restore as prompt/writing constraints:
+
+- In Analysis, explain whether insight is direct-stock or general-principle.
+- For `MARKET`, discuss market posture.
+- For `MINDSET`, discuss investor behavior and patience.
+- For `RISK`, discuss position sizing, split buying, and defense.
+- For `PSYCHOLOGY`, discuss sentiment and price confirmation.
+- Do not invent guru comments.
+
+Must remain system-controlled:
+
+- `content_type`
+- `freshness_level`
+- `guru_score`
+- `guru_weight`
+- selected docs and dates.
+
+Do not copy blindly:
+
+- Mojibake YouTube prompt text.
+- Any instruction that treats general market commentary as a direct recommendation.
+- Any old wording that implies YouTube can produce target prices.
+
+## 11. Hallucination Defense Plan
+
+Core principle:
+
+- The LLM explains provided data. It does not create new data.
+
+Defense layers:
+
+1. Deterministic Python owns data collection, validation, scoring, price guide, final opinion, chart data, markdown headings, and summary save.
+2. Structured-output schema restricts the LLM to known report fields.
+3. Prompt constraints forbid invented numbers, prices, dates, articles, links, YouTube comments, broker names, and target prices.
+4. Analysis input should clearly label raw data, derived scores, and missing values.
+5. Missing values must be described as unavailable or limited.
+6. News numbers must not become accounting facts.
+7. YouTube must not become a price-target source.
+8. System-calculated `investment_opinion` is restored after model output and must be treated as final.
+
+Future validation should use mock inputs that intentionally omit data and confirm the output uses cautious language rather than fabricated detail.
+
+## 12. Safe Restoration Order
 
 Recommended order:
 
-1. Korean/mojibake cleanup in active direct tool strings and status/error strings.
-2. Analysis structured-output prompt parity restoration.
-3. Youtube RAG interpretation guide cleanup and direct summary improvement.
-4. Research relevance and source-quality filtering.
-5. Accounting summary and score reason wording cleanup.
-6. Macro briefing wording cleanup.
-7. Optional golden-file report comparison against old known-good reports.
+1. Analysis structured-output prompt parity.
+2. Youtube RAG interpretation guide cleanup and content-type summary improvement.
+3. Research relevance, source-quality, and sentiment reasoning improvement.
+4. Accounting summary wording and trend interpretation improvement.
+5. Macro briefing wording and pressure/support explanation improvement.
+6. Optional golden-file comparison against old known-good reports.
 
-Why Analysis first after encoding cleanup:
+Why Analysis first:
 
-- Report quality difference is most visible in final prose.
-- It can absorb more detailed instructions without changing API fields.
-- It should preserve `investment_opinion`, chart shape, markdown headings, and price labels.
-- It is easier to mock than full data collection.
+- It has the largest visible effect on report quality.
+- It can restore tone and synthesis without changing API fields.
+- It can be validated with mocked structured output.
+- It does not require reintroducing CrewAI.
 
-Why not start with Macro or Accounting:
+## 13. Risks
 
-- They mostly produce data and scores.
-- They affect correctness, but less of the visible report tone.
-- Their quality gaps are important but narrower than the final report-writing gap.
+Risks while restoring parity:
 
-## 12. Risks
-
-Main risks while restoring parity:
-
-- Output shape mismatch with `DirectAnalysisOutput`.
-- Markdown parser breakage if headings or chart data format changes.
-- Frontend chart breakage if `chart_data` fields or order change.
-- Summary save breakage if report extraction assumptions change.
-- `investment_opinion` drift if the LLM is allowed to override system scoring.
-- Direct YouTube content being interpreted as a stock-specific recommendation when it is only market or mindset guidance.
-- News snippets being treated as financial facts.
-- Reintroducing too much prompt length and causing structured-output parsing failures.
+- Output schema mismatch.
+- Markdown parser breakage.
+- Chart rendering breakage.
+- Summary extraction breakage.
+- LLM overriding final opinion.
+- News snippets being treated as audited financial facts.
+- General YouTube principles being interpreted as direct stock calls.
+- Prompt length causing structured-output parse failures.
+- Accidentally copying mojibake from legacy prompts.
 - Accidentally reintroducing CrewAI imports.
-- Running external APIs during tests unintentionally.
-- Korean mojibake returning through copied legacy prompt text.
+- Accidentally running real external APIs during validation.
 
-## 13. Validation Plan
+Mitigation:
+
+- Keep patches small.
+- Use mock validation before real generation.
+- Preserve deterministic Python rendering.
+- Scan edited files for mojibake.
+- Search active runtime for CrewAI imports after changes.
+
+## 14. Validation Plan
+
+This document step requires no runtime validation. For future implementation steps:
 
 Static validation:
 
@@ -267,22 +457,21 @@ python -B -c "from langchain_chroma import Chroma; print('langchain_chroma impor
 
 Mock validation:
 
-- Mock `call_analysis_structured_output()` and confirm `normalize_analysis_output()` preserves system `investment_opinion`.
-- Mock Analysis output and confirm markdown headings remain unchanged.
-- Mock `chart_data` and confirm fields remain `period`, `revenue`, `net_profit`, `fcf`.
-- Mock Research results with duplicate or irrelevant articles and confirm filtering behavior.
-- Mock YouTube search results for `SPECIFIC`, `MARKET`, `MINDSET`, `RISK`, `PSYCHOLOGY`, and `N/A`.
+- Mock Analysis structured output and confirm markdown headings are unchanged.
+- Confirm `investment_opinion` remains the system value.
+- Confirm `chart_data` fields remain `period`, `revenue`, `net_profit`, `fcf`.
+- Mock missing macro, news, and YouTube fields and confirm cautious language.
+- Mock `SPECIFIC`, `MARKET`, `MINDSET`, `RISK`, `PSYCHOLOGY`, and no-result YouTube cases.
 
-Manual user-run app validation:
+Manual user-run validation:
 
 - 1-stock report generation.
 - 2-stock report generation with one Korean and one US stock.
 - Confirm `summary_saved=true`.
 - Confirm macro runs once per batch.
-- Confirm report cards, detail page, chart rendering, and summary extraction still work.
-- Compare generated report quality with older known-good reports.
+- Compare generated prose quality against older known-good reports.
 
-Commands Codex should not run during documentation or prompt-only work:
+Commands to avoid during documentation and prompt-only steps:
 
 - `/api/run-report`
 - real report generation
@@ -294,39 +483,37 @@ Commands Codex should not run during documentation or prompt-only work:
 - embedding jobs
 - pip install, uninstall, or upgrade
 
-## 14. Korean Encoding And Mojibake Safety Plan
+## 15. Korean Encoding And Mojibake Safety Plan
 
-Before restoring any prompt text:
+Rules:
 
-- Do not copy mojibake text from legacy files directly into active prompts.
-- Reconstruct Korean instructions manually in clean UTF-8.
-- Keep source files encoded as UTF-8.
-- After each prompt or text change, scan edited files for mojibake patterns.
-- Prefer small patches and review diff output before validation.
+- Keep markdown and Python files as UTF-8.
+- Do not copy mojibake text from legacy Agent/Task files.
+- Reconstruct Korean instructions manually in readable Korean.
+- Scan newly created or edited text before finishing.
+- If a scan pattern appears only because the document lists scan patterns, remove or reword that list so scans remain meaningful.
 
-Recommended scan approach:
+Files requiring extra caution:
 
-- Search for common CP949/UTF-8 mojibake fragments before finishing any Korean prompt or fallback-message change.
-- Keep the exact pattern list in the task checklist or reviewer notes, not inside runtime-facing documentation, so the document itself stays clean when scanned.
+- `backend/flows/macro/tool.py`
+- `backend/flows/accounting/tool.py`
+- `backend/flows/youtube/tool.py`
+- `backend/graphs/report_graph.py`
+- `backend/pipelines/report_pipeline.py`
+- legacy `backend/flows/*/agent.py`
+- legacy `backend/flows/*/task.py`
 
-Files that need special caution:
-
-- `flows/macro/tool.py`
-- `flows/accounting/tool.py`
-- `flows/youtube/tool.py`
-- `graphs/report_graph.py`
-- `pipelines/report_pipeline.py`
-- legacy `agent.py` and `task.py` files if they are used as reference
+For this documentation file, no mojibake text should remain.
 
 ## Recommended First Restoration Step
 
-The first restoration step should be Analysis prompt parity, but only after active Korean/mojibake strings used as direct tool context are cleaned.
+The first restoration step should be Analysis prompt parity.
 
-Practical first implementation task:
+Implementation target:
 
-1. Keep runtime CrewAI-free.
-2. Expand the direct Analysis structured-output prompt with the old safety rules in clean UTF-8.
-3. Preserve the same `DirectAnalysisOutput` schema.
-4. Preserve system `investment_opinion`.
-5. Preserve markdown headings, price labels, and chart data.
-6. Validate with mocked structured output before any real report generation.
+- Keep runtime CrewAI-free.
+- Expand `call_analysis_structured_output()` with clean UTF-8 safety and writing constraints.
+- Preserve the existing structured-output schema.
+- Preserve deterministic markdown rendering.
+- Preserve final `investment_opinion`.
+- Validate with mocked structured output before any real report generation.

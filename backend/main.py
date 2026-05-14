@@ -12,6 +12,7 @@ from flows.research.tool import search_tool
 from flows.accounting.tool import collect_financial_data
 from flows.analysis.tool import call_analysis_structured_output
 from flows.macro.tool import collect_macro_data
+from flows.macro.tool import build_macro_fallback as build_macro_tool_fallback
 from flows.youtube.tool import get_guru_youtube_tool
 
 # YouTube 자동 업데이트 헬퍼
@@ -433,22 +434,7 @@ def update_youtube_vector_db():
 
 
 def build_macro_fallback(error: str | None = None):
-    return {
-        "exchange_rate": None,
-        "us_10y_yield": None,
-        "nasdaq_index": None,
-        "wti_price": None,
-        "vix_index": None,
-        "exchange_rate_change_1mo": None,
-        "us_10y_yield_change_1mo": None,
-        "nasdaq_index_change_1mo": None,
-        "wti_price_change_1mo": None,
-        "vix_index_change_1mo": None,
-        "risk_warnings": [],
-        "macro_briefing": "macro data collection failed; neutral state applied",
-        "is_data_valid": False,
-        "error": error or "macro_result invalid",
-    }
+    return build_macro_tool_fallback(error)
 
 
 def run_macro_step(macro_agent=None, macro_tasks=None, state: ReportState | None = None):
@@ -473,13 +459,19 @@ def run_macro_step(macro_agent=None, macro_tasks=None, state: ReportState | None
             indent=2,
         )
     else:
-        macro_json = json.dumps(macro_data, ensure_ascii=False, indent=2)
+        macro_score = macro_data.get("macro_score")
+        macro_score_reasons = macro_data.get("macro_score_reasons")
 
-        macro_score, macro_score_reasons = calculate_macro_score(
-            exchange_rate=macro_data.get("exchange_rate"),
-            us_10y_yield=macro_data.get("us_10y_yield"),
-            vix_index=macro_data.get("vix_index"),
-        )
+        if macro_score is None or not macro_score_reasons:
+            macro_score, macro_score_reasons = calculate_macro_score(
+                exchange_rate=macro_data.get("exchange_rate"),
+                us_10y_yield=macro_data.get("us_10y_yield"),
+                vix_index=macro_data.get("vix_index"),
+            )
+            macro_data["macro_score"] = macro_score
+            macro_data["macro_score_reasons"] = macro_score_reasons
+
+        macro_json = json.dumps(macro_data, ensure_ascii=False, indent=2)
 
     logger.info(f"매크로 분석 완료 (Macro Score: {macro_score}, 이유: {macro_score_reasons})")
 

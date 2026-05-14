@@ -1129,7 +1129,7 @@ def run_multiple_report_pipeline(targets, agents, tasks, macro_context=None, sta
     return results, macro_context
 
 
-def run_financial_crew(stock_pool=None, status_callback=None):
+def run_financial_report_pipeline(stock_pool=None, status_callback=None):
     stock_pool = normalize_stock_pool(stock_pool)
     require_env("OPENAI_API_KEY")
 
@@ -1165,7 +1165,7 @@ def run_financial_crew(stock_pool=None, status_callback=None):
     }
 
 if __name__ == "__main__":
-    output = run_financial_crew()
+    output = run_financial_report_pipeline()
 
     logger.debug("=" * 60)
     logger.debug("report pipeline started")

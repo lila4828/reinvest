@@ -6,9 +6,9 @@ API 계층이 main.py 내부 구현에 직접 의존하지 않도록 얇은 pipe
 
 
 def run_report_pipeline(stock_pool=None, status_callback=None):
-    from main import run_financial_crew
+    from main import run_financial_report_pipeline
 
-    return run_financial_crew(
+    return run_financial_report_pipeline(
         stock_pool=stock_pool,
         status_callback=status_callback,
     )

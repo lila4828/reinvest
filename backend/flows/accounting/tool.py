@@ -1,6 +1,25 @@
 import json
+import logging
 import math
+import os
+import tempfile
 import yfinance as yf
+
+logger = logging.getLogger(__name__)
+
+
+def configure_yfinance_cache():
+    cache_dir = os.getenv(
+        "YFINANCE_CACHE_DIR",
+        os.path.join(tempfile.gettempdir(), "ai_reinvest_yfinance_cache"),
+    )
+
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        if hasattr(yf, "set_tz_cache_location"):
+            yf.set_tz_cache_location(cache_dir)
+    except Exception as e:
+        logger.warning("yfinance cache 설정 실패. 기본 cache 설정으로 진행합니다: %s", e)
 
 
 def _to_float(value, default=None):
@@ -64,6 +83,7 @@ def _get_ma(hist, window):
 
 def collect_financial_data(ticker: str) -> dict:
     try:
+        configure_yfinance_cache()
         stock = yf.Ticker(ticker)
 
         hist = stock.history(period="5y")

@@ -38,7 +38,7 @@ def write_video_ids(file_path, video_ids):
 
 
 def fetch_video_ids_from_channel(channel_url, fetch_limit=15):
-    print(f"🔍 유튜브 채널에서 최신 영상 {fetch_limit}개를 스캔합니다: {channel_url}")
+    print(f"YouTube 채널에서 최신 영상 {fetch_limit}개를 스캔합니다: {channel_url}")
 
     ydl_opts = {
         "extract_flat": "in_playlist",
@@ -54,7 +54,7 @@ def fetch_video_ids_from_channel(channel_url, fetch_limit=15):
         info = ydl.extract_info(channel_url, download=False)
 
     if "entries" not in info:
-        print("🚨 채널에서 영상을 찾을 수 없습니다. URL을 확인해 주세요.")
+        print("채널에서 영상을 찾을 수 없습니다. URL을 확인해 주세요.")
         return []
 
     return [
@@ -87,19 +87,19 @@ def fetch_and_update_video_ids(channel_url, file_path=None, fetch_limit=15):
         ]
 
         if not new_ids:
-            print("⏩ 새로운 영상이 없습니다. 기존 목록이 이미 최신 상태입니다.")
+            print("새로운 영상이 없습니다. 기존 목록이 이미 최신 상태입니다.")
             return []
 
-        print(f"🎉 {len(new_ids)}개의 새로운 영상이 발견되었습니다: {new_ids}")
+        print(f"{len(new_ids)}개의 새로운 영상을 발견했습니다: {new_ids}")
 
         updated_ids = new_ids + existing_ids
         write_video_ids(file_path, updated_ids)
 
-        print(f"💾 '{file_path}' 파일 업데이트가 완료되었습니다!")
+        print(f"'{file_path}' 파일 업데이트가 완료되었습니다.")
         return new_ids
 
     except Exception as e:
-        print(f"🚨 채널 정보 추출 중 오류 발생: {e}")
+        print(f"채널 정보 추출 중 오류 발생: {e}")
         return []
 
 
@@ -122,7 +122,7 @@ def fetch_all_latest_youtube_ids(file_path=None, fetch_limit=15):
             )
             all_fetched_ids.extend(fetched_ids)
         except Exception as e:
-            print(f"🚨 채널 정보 추출 중 오류 발생: {url} / {e}")
+            print(f"채널 정보 추출 중 오류 발생: {url} / {e}")
 
     # 중복 제거, 최신순 유지
     unique_fetched_ids = []
@@ -142,15 +142,15 @@ def fetch_all_latest_youtube_ids(file_path=None, fetch_limit=15):
     ]
 
     if not new_ids:
-        print("⏩ 새로운 영상이 없습니다. 기존 목록이 이미 최신 상태입니다.")
+        print("새로운 영상이 없습니다. 기존 목록이 이미 최신 상태입니다.")
         return []
 
-    print(f"🎉 총 {len(new_ids)}개의 새로운 영상이 발견되었습니다: {new_ids}")
+    print(f"총 {len(new_ids)}개의 새로운 영상을 발견했습니다: {new_ids}")
 
     updated_ids = new_ids + existing_ids
     write_video_ids(file_path, updated_ids)
 
-    print(f"💾 '{file_path}' 파일 업데이트가 완료되었습니다!")
+    print(f"'{file_path}' 파일 업데이트가 완료되었습니다.")
     return new_ids
 
 
@@ -158,6 +158,6 @@ if __name__ == "__main__":
     new_ids = fetch_all_latest_youtube_ids(fetch_limit=15)
 
     if new_ids:
-        print(f"✅ 신규 영상 ID 업데이트 완료: {new_ids}")
+        print(f"신규 영상 ID 업데이트 완료: {new_ids}")
     else:
-        print("✅ 신규 영상 없음")
+        print("신규 영상 없음")

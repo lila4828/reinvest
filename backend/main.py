@@ -12,6 +12,7 @@ from vector_db.youtube_update_guard import filter_processable_video_ids
 from services.report_file_service import save_report_files
 from services.report_output_service import build_output_report_item, build_run_summary_output
 from services.report_render_service import render_markdown_report
+from services.runtime_config_service import require_env
 from services.report_state_service import build_failed_state, finalize_state
 from services.report_step_service import (
     append_report_error,
@@ -64,13 +65,6 @@ REPORT_GENERATION_YOUTUBE_UPDATE_ENABLED = (
     os.getenv("REPORT_GENERATION_YOUTUBE_UPDATE_ENABLED", "false").lower()
     in ["1", "true", "yes", "on"]
 )
-
-
-def require_env(name: str):
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"환경변수 누락: {name}")
-    return value
 
 
 def normalize_kr_ticker(ticker: str):

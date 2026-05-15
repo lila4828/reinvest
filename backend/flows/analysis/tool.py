@@ -3,6 +3,8 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
+from services.runtime_config_service import get_openai_analysis_model
+
 
 class DirectChartData(BaseModel):
     period: str = Field(description="T-2, T-1, T")
@@ -258,7 +260,7 @@ def call_analysis_structured_output(
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     completion = client.beta.chat.completions.parse(
-        model=os.getenv("OPENAI_ANALYSIS_MODEL", "gpt-4o-mini"),
+        model=get_openai_analysis_model(),
         messages=build_analysis_messages(
             company=company,
             analysis_inputs=analysis_inputs,

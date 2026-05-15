@@ -116,6 +116,7 @@ def run_single_report_pipeline(
             guru_score=guru_score,
             guru_weight=guru_weight,
             company=company_name,
+            youtube_json=youtube_json,
             state=state,
         )
 

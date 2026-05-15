@@ -14,6 +14,7 @@ from flows.youtube.tool import build_youtube_fallback
 from flows.youtube.tool import run_local_youtube_search
 from schemas.report_state import ReportState
 from services.investment_opinion_service import calculate_investment_opinion
+from services.investment_opinion_service import apply_guru_positive_policy
 from services.price_service import calculate_price_targets
 
 
@@ -449,6 +450,22 @@ def parse_youtube_result(youtube_result, company: str, state: ReportState | None
     return guru_score, guru_weight, youtube_json
 
 
+def extract_guru_opinion(youtube_json: str = ""):
+    if not youtube_json:
+        return None
+
+    try:
+        youtube_data = json.loads(youtube_json)
+    except Exception:
+        return None
+
+    guru_opinion = youtube_data.get("guru_opinion")
+    if isinstance(guru_opinion, dict):
+        return guru_opinion
+
+    return None
+
+
 def decide_final_opinion(
     acc_data,
     macro_score,
@@ -456,6 +473,7 @@ def decide_final_opinion(
     guru_score,
     guru_weight,
     company: str,
+    youtube_json: str = "",
     state: ReportState | None = None,
 ):
     set_report_step(state, "opinion")
@@ -467,6 +485,12 @@ def decide_final_opinion(
         guru_score=guru_score,
         guru_weight=guru_weight,
         final_config=SCORING_CONFIG["final"],
+    )
+    guru_opinion = extract_guru_opinion(youtube_json)
+    opinion_result = apply_guru_positive_policy(
+        opinion_result,
+        guru_opinion=guru_opinion,
+        accounting_data=acc_data,
     )
     final_opinion = opinion_result["final_opinion"]
     system_score = opinion_result["system_score"]

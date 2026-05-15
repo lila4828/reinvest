@@ -18,6 +18,37 @@ CONFIDENCE_LEVELS = {"HIGH", "MEDIUM", "LOW"}
 
 DEFAULT_SECTOR_NOTE = "직접 영향은 제한적이며 종목별 실적 요인 확인이 필요합니다."
 
+POSITIVE_RISK_EXCLUSION_TERMS = [
+    "우호적",
+    "긍정",
+    "지지",
+    "위험자산 선호",
+    "변동성 부담 완화",
+    "하락해 변동성 부담 완화",
+    "투자심리 개선",
+    "stable",
+    "support",
+    "relief",
+]
+
+RISK_FACTOR_TERMS = [
+    "부담",
+    "압력",
+    "위험",
+    "리스크",
+    "상승 압력",
+    "외국인 수급 부담",
+    "밸류에이션 부담",
+    "물가와 비용 부담",
+    "고금리",
+    "환율 상승 부담",
+    "유가 상승 부담",
+    "risk",
+    "pressure",
+    "burden",
+    "high yield",
+]
+
 
 def _as_dict(value):
     return value if isinstance(value, dict) else {}
@@ -55,6 +86,19 @@ def _is_negative(value):
     return numeric is not None and numeric < 0
 
 
+def _contains_any(text, terms):
+    normalized = str(text or "").lower()
+    return any(str(term).lower() in normalized for term in terms)
+
+
+def _is_positive_macro_factor(text):
+    return _contains_any(text, POSITIVE_RISK_EXCLUSION_TERMS)
+
+
+def _is_risk_macro_factor(text):
+    return _contains_any(text, RISK_FACTOR_TERMS) and not _is_positive_macro_factor(text)
+
+
 def _indicator_count(macro_data):
     keys = [
         "exchange_rate",
@@ -84,10 +128,14 @@ def _build_positive_factors(macro_data):
 
 
 def _build_risk_factors(macro_data):
-    factors = [str(warning)[:180] for warning in _as_list(macro_data.get("risk_warnings")) if warning]
+    factors = [
+        str(warning)[:180]
+        for warning in _as_list(macro_data.get("risk_warnings"))
+        if warning and _is_risk_macro_factor(warning)
+    ]
     reasons = [str(reason) for reason in _as_list(macro_data.get("macro_score_reasons")) if reason]
     for reason in reasons:
-        if any(marker in reason for marker in ["부담", "위험", "압력", "risk", "고금리"]):
+        if _is_risk_macro_factor(reason):
             factors.append(reason[:180])
 
     us_10y = _safe_float(macro_data.get("us_10y_yield"))

@@ -3,6 +3,8 @@ import math
 
 import yfinance as yf
 
+from services.macro_context_service import attach_macro_context
+
 
 MACRO_SCORE_CONFIG = {
     "vix_high_risk": 20,
@@ -204,7 +206,7 @@ def build_macro_interpretation(macro_data: dict):
 
 
 def build_macro_fallback(error: str | None = None):
-    return {
+    data = {
         "exchange_rate": None,
         "us_10y_yield": None,
         "nasdaq_index": None,
@@ -222,6 +224,7 @@ def build_macro_fallback(error: str | None = None):
         "is_data_valid": False,
         "error": error or "매크로 데이터 수집 실패",
     }
+    return attach_macro_context(data)
 
 
 def collect_macro_data() -> dict:
@@ -258,7 +261,7 @@ def collect_macro_data() -> dict:
         result["macro_score_reasons"] = macro_score_reasons
         result["macro_briefing"] = macro_briefing
 
-        return result
+        return attach_macro_context(result)
 
     except Exception as e:
         return build_macro_fallback(str(e))

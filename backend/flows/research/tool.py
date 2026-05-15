@@ -3,6 +3,8 @@ import json
 import ast
 import requests
 
+from services.news_brief_service import attach_news_brief
+
 
 class SafeSerperNewsTool:
     name: str = "safe_serper_news_search"
@@ -276,7 +278,7 @@ def build_research_fallback(error: str | None = None):
     if error:
         data["error"] = error
 
-    return data
+    return attach_news_brief(data)
 
 
 def build_research_queries(company: str):
@@ -501,7 +503,7 @@ def collect_research_data(company: str):
         sentiment_reason=sentiment_reason,
     )
 
-    return {
+    payload = {
         "sentiment_score": sentiment_score,
         "momentum_strength": momentum_strength,
         "news_summary": news_summary,
@@ -516,3 +518,4 @@ def collect_research_data(company: str):
         "results": results[:10],
         "errors": errors,
     }
+    return attach_news_brief(payload)

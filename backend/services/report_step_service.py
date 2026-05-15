@@ -15,6 +15,7 @@ from flows.youtube.tool import run_local_youtube_search
 from schemas.report_state import ReportState
 from services.investment_opinion_service import calculate_investment_opinion
 from services.investment_opinion_service import apply_guru_positive_policy
+from services.guru_strategy_service import attach_guru_strategy_context
 from services.price_service import calculate_price_targets
 
 
@@ -464,6 +465,28 @@ def extract_guru_opinion(youtube_json: str = ""):
         return guru_opinion
 
     return None
+
+
+def attach_guru_strategy_context_to_youtube_json(
+    youtube_json: str = "",
+    guru_strategy_context: dict | None = None,
+    state: ReportState | None = None,
+):
+    if not isinstance(guru_strategy_context, dict):
+        return youtube_json
+
+    try:
+        youtube_data = json.loads(youtube_json) if youtube_json else {}
+    except Exception:
+        youtube_data = {}
+
+    youtube_data = attach_guru_strategy_context(youtube_data, guru_strategy_context)
+    merged_json = json.dumps(youtube_data, ensure_ascii=False, indent=2)
+
+    if state is not None:
+        state["youtube_context"] = merged_json
+
+    return merged_json
 
 
 def decide_final_opinion(

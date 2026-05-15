@@ -203,6 +203,7 @@ def analysis_node(state: ReportState):
         from services.report_render_service import render_markdown_report
         from services.report_step_service import (
             append_report_error,
+            attach_guru_strategy_context_to_youtube_json,
             decide_final_opinion,
             parse_research_result,
             parse_youtube_result,
@@ -219,6 +220,11 @@ def analysis_node(state: ReportState):
             company_name,
             state=state,
         )
+        youtube_json = attach_guru_strategy_context_to_youtube_json(
+            youtube_json,
+            macro_context.get("guru_strategy_context"),
+            state=state,
+        )
         final_opinion = decide_final_opinion(
             acc_data=state.get("acc_data"),
             macro_score=macro_context["macro_score"],
@@ -226,6 +232,7 @@ def analysis_node(state: ReportState):
             guru_score=guru_score,
             guru_weight=guru_weight,
             company=company_name,
+            youtube_json=youtube_json,
             state=state,
         )
         final_result = run_final_analysis_step(

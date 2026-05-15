@@ -13,11 +13,16 @@ from dotenv import load_dotenv
 from graphs.report_graph import run_single_report_graph
 from schemas.report_state import ReportState, create_initial_report_state
 from services.report_file_service import save_report_files
+from services.guru_strategy_service import (
+    build_guru_strategy_context_deterministic,
+    build_guru_strategy_context_fallback,
+)
 from services.report_output_service import build_output_report_item, build_run_summary_output
 from services.report_render_service import render_markdown_report
 from services.report_state_service import build_failed_state, finalize_state
 from services.report_step_service import (
     append_report_error,
+    attach_guru_strategy_context_to_youtube_json,
     decide_final_opinion,
     parse_research_result,
     parse_youtube_result,
@@ -58,6 +63,13 @@ logging.getLogger("chromadb").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+
+def build_guru_strategy_context(docs=None):
+    if docs:
+        return build_guru_strategy_context_deterministic(docs)
+
+    return build_guru_strategy_context_fallback("no_runtime_retrieval_fallback")
 
 
 def run_single_report_pipeline(
@@ -106,6 +118,11 @@ def run_single_report_pipeline(
         guru_score, guru_weight, youtube_json = parse_youtube_result(
             youtube_result,
             company_name,
+            state=state,
+        )
+        youtube_json = attach_guru_strategy_context_to_youtube_json(
+            youtube_json,
+            macro_context.get("guru_strategy_context"),
             state=state,
         )
 
@@ -206,12 +223,18 @@ def build_macro_context(agents=None, tasks=None):
         "macro_score": macro_score,
         "macro_score_reasons": macro_score_reasons,
         "macro_json": macro_json,
+        "guru_strategy_context": build_guru_strategy_context(),
     }
 
 
 def run_multiple_report_pipeline(targets, agents, tasks, macro_context=None, status_callback=None):
     if macro_context is None:
         macro_context = build_macro_context(agents, tasks)
+    elif not isinstance(macro_context.get("guru_strategy_context"), dict):
+        macro_context = {
+            **macro_context,
+            "guru_strategy_context": build_guru_strategy_context(),
+        }
 
     results = []
 

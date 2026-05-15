@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
+from services.guru_opinion_service import attach_guru_opinion
+
 
 CONTENT_TYPES = {"SPECIFIC", "MARKET", "MINDSET", "RISK", "PSYCHOLOGY", "GENERAL", "N/A"}
 
@@ -178,7 +180,11 @@ def _extract_relevant_phrases(selected_docs: List[Dict[str, Any]], keywords: Lis
     return phrases
 
 
-def build_youtube_fallback(error: str | None = None):
+def build_youtube_fallback(
+    error: str | None = None,
+    company: str = "",
+    ticker: str | None = None,
+):
     data = {
         "guru_sentiment_score": 50.0,
         "key_strategy": "유의미한 유튜브 인사이트가 없어 중립으로 반영합니다.",
@@ -195,7 +201,7 @@ def build_youtube_fallback(error: str | None = None):
     if error:
         data["error"] = error
 
-    return data
+    return attach_guru_opinion(company, ticker, data)
 
 
 def parse_youtube_search_result(raw_result):
@@ -344,11 +350,14 @@ def build_youtube_data_from_search(company: str, search_result):
     insight_date = search_result.get("latest_date") or "N/A"
 
     if not search_result.get("is_data_valid") or not selected_docs:
-        return build_youtube_fallback(search_result.get("error") or "no relevant youtube results")
+        return build_youtube_fallback(
+            search_result.get("error") or "no relevant youtube results",
+            company=company,
+        )
 
     guru_score = score_youtube_docs(content_type, freshness_level, selected_docs)
 
-    return {
+    payload = {
         "guru_sentiment_score": guru_score,
         "key_strategy": build_key_strategy(content_type, freshness_level, selected_docs),
         "content_type": content_type,
@@ -365,6 +374,7 @@ def build_youtube_data_from_search(company: str, search_result):
             "content_type이 SPECIFIC이 아니면 종목 직접 추천으로 해석하지 않습니다."
         ),
     }
+    return attach_guru_opinion(company, None, payload)
 
 
 class LocalYoutubeSearchTool:

@@ -83,7 +83,7 @@ def render_markdown_report(
 ## 3. 📰 비즈니스 모멘텀 (최신 뉴스)
 {report_data.momentum_analysis}
 
-## 4. 📺 구루의 시선 (주알홍쌤 인사이트)
+## 4. 📺 구루의 시장관 및 종목 해석
 {report_data.guru_analysis}
 
 ## 5. 💡 수석 애널리스트 종합 결론

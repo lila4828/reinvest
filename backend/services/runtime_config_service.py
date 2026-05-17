@@ -7,6 +7,7 @@ DEFAULT_OPENAI_GURU_OPINION_MODEL = "gpt-5.4"
 DEFAULT_OPENAI_GURU_STRATEGY_MODEL = "gpt-5.4"
 
 TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
 
 def require_env(name: str):
@@ -32,13 +33,28 @@ def get_openai_guru_strategy_model():
     return os.getenv("OPENAI_GURU_STRATEGY_MODEL", DEFAULT_OPENAI_GURU_STRATEGY_MODEL)
 
 
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    if normalized in TRUE_ENV_VALUES:
+        return True
+    if normalized in FALSE_ENV_VALUES:
+        return False
+    return default
+
+
 def is_news_brief_llm_enabled():
-    return os.getenv("REPORT_NEWS_BRIEF_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES
+    return _get_env_bool("REPORT_NEWS_BRIEF_LLM_ENABLED", default=True)
 
 
 def is_guru_opinion_llm_enabled():
-    return os.getenv("REPORT_GURU_OPINION_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES
+    return _get_env_bool("REPORT_GURU_OPINION_LLM_ENABLED", default=True)
 
 
 def is_guru_strategy_llm_enabled():
-    return os.getenv("REPORT_GURU_STRATEGY_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES
+    return _get_env_bool("REPORT_GURU_STRATEGY_LLM_ENABLED", default=True)

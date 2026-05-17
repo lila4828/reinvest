@@ -68,6 +68,9 @@ class GuruStrategySourceWindow(BaseModel):
     start_date: str = "N/A"
     end_date: str = "N/A"
     source_policy: str = DEFAULT_SOURCE_POLICY
+    lookback_days: int | None = None
+    doc_count: int = 0
+    latest_doc_date: str = ""
 
 
 class GuruStrategyContextOutput(BaseModel):
@@ -129,7 +132,14 @@ def _normalize_doc(doc):
         "days_old": doc.get("days_old"),
         "title": str(doc.get("title") or "제목 없음")[:180],
         "source": str(doc.get("source") or "Youtube RAG")[:80],
-        "content": str(doc.get("content") or doc.get("transcript") or doc.get("snippet") or "")[:1200],
+        "content": str(
+            doc.get("content")
+            or doc.get("content_excerpt")
+            or doc.get("transcript")
+            or doc.get("snippet")
+            or ""
+        )[:1200],
+        "metadata": _as_dict(doc.get("metadata")),
     }
 
 
@@ -151,7 +161,7 @@ def _dedupe_and_rank_docs(docs, limit=3):
     return deduped
 
 
-def _build_llm_docs(docs, limit=3):
+def _build_llm_docs(docs, limit=6):
     compact_docs = []
     for doc in _dedupe_and_rank_docs(docs, limit=limit):
         compact_docs.append(
@@ -202,16 +212,24 @@ def _build_source_window(docs, source_policy=DEFAULT_SOURCE_POLICY):
         for doc in docs
         if str(doc.get("date") or "").strip() not in {"", "날짜 없음", "N/A"}
     ]
+    metadata_items = [_as_dict(doc.get("metadata")) for doc in docs]
+    first_metadata = next((item for item in metadata_items if item), {})
+    source_policy = first_metadata.get("source_policy") or source_policy
+    lookback_days = first_metadata.get("lookback_days")
+    latest_doc_date = first_metadata.get("latest_doc_date") or (max(dates) if dates else "")
     return {
-        "broadcast_count": min(len(docs), 3),
+        "broadcast_count": int(first_metadata.get("broadcast_count") or min(len(docs), 3)),
         "start_date": min(dates) if dates else "N/A",
         "end_date": max(dates) if dates else "N/A",
         "source_policy": source_policy,
+        "lookback_days": lookback_days,
+        "doc_count": int(first_metadata.get("doc_count") or len(docs)),
+        "latest_doc_date": latest_doc_date,
     }
 
 
 def build_guru_strategy_context_input(docs: list[dict] | None = None) -> dict:
-    selected_docs = _dedupe_and_rank_docs(docs)
+    selected_docs = _dedupe_and_rank_docs(docs, limit=6)
     return {
         "selected_docs": selected_docs,
         "llm_docs": _build_llm_docs(docs),
@@ -239,6 +257,12 @@ def _sanitize_source_window(value, fallback):
         "source_policy": _sanitize_string(
             data.get("source_policy") or fallback_data.get("source_policy") or DEFAULT_SOURCE_POLICY,
             160,
+        ),
+        "lookback_days": data.get("lookback_days") or fallback_data.get("lookback_days"),
+        "doc_count": data.get("doc_count") or fallback_data.get("doc_count") or 0,
+        "latest_doc_date": _sanitize_string(
+            data.get("latest_doc_date") or fallback_data.get("latest_doc_date") or "",
+            80,
         ),
     }
 
@@ -345,7 +369,7 @@ def build_guru_strategy_context_deterministic(docs: list[dict] | None = None) ->
     context_input = build_guru_strategy_context_input(docs)
     selected_docs = context_input["selected_docs"]
     if not selected_docs:
-        return build_guru_strategy_context_fallback("mock_or_provided_docs_empty")
+        return build_guru_strategy_context_fallback("no_recent_local_rag_docs_fallback")
 
     context = {
         "recent_market_view": _matched_text("recent_market_view", selected_docs),

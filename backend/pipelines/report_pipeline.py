@@ -16,6 +16,7 @@ from services.report_file_service import save_report_files
 from services.guru_strategy_service import (
     build_guru_strategy_context_with_llm_or_fallback,
 )
+from services.guru_strategy_retrieval_service import get_recent_guru_strategy_docs_from_config
 from services.report_output_service import build_output_report_item, build_run_summary_output
 from services.report_render_service import render_markdown_report
 from services.report_state_service import build_failed_state, finalize_state
@@ -65,6 +66,12 @@ logger = logging.getLogger(__name__)
 
 
 def build_guru_strategy_context(docs=None):
+    if docs is None:
+        try:
+            docs = get_recent_guru_strategy_docs_from_config()
+        except Exception as exc:
+            logger.warning("guru strategy recent RAG context retrieval failed: %s", exc)
+            docs = []
     return build_guru_strategy_context_with_llm_or_fallback(docs)
 
 

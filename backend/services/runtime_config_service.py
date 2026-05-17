@@ -34,3 +34,7 @@ def get_openai_guru_strategy_model():
 
 def is_news_brief_llm_enabled():
     return os.getenv("REPORT_NEWS_BRIEF_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES
+
+
+def is_guru_opinion_llm_enabled():
+    return os.getenv("REPORT_GURU_OPINION_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES

@@ -1,10 +1,23 @@
-"""Deterministic per-stock guru opinion helpers.
+"""Per-stock guru opinion helpers.
 
-This module builds a compact interpretation layer from an existing Youtube
-payload. It does not query Chroma, call OpenAI, or change guru score/weight.
+The default path is deterministic. The optional OpenAI path is guarded by
+REPORT_GURU_OPINION_LLM_ENABLED and never changes guru score/weight.
 """
 
+import json
+import logging
 import re
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+from services.runtime_config_service import (
+    get_openai_guru_opinion_model,
+    is_guru_opinion_llm_enabled,
+)
+
+
+logger = logging.getLogger(__name__)
 
 MENTION_TYPES = {"DIRECT", "SECTOR", "MARKET", "MINDSET", "NONE"}
 SENTIMENTS = {"BULLISH", "NEUTRAL", "BEARISH"}
@@ -98,12 +111,38 @@ SECTOR_TERMS = [
 ]
 
 
+class GuruOpinionEvidenceItem(BaseModel):
+    title: str = Field(default="")
+    date: str = Field(default="")
+    reason: str = Field(default="")
+
+
+class GuruOpinionOutput(BaseModel):
+    mention_type: Literal["DIRECT", "SECTOR", "MARKET", "MINDSET", "NONE"]
+    sentiment: Literal["BULLISH", "NEUTRAL", "BEARISH"]
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    stock_relevance: str = ""
+    opinion_impact: str = ""
+    buy_upgrade_signal: bool = False
+    price_discipline_note: str = ""
+    risk_warning: str = ""
+    summary: str = ""
+    evidence_items: list[GuruOpinionEvidenceItem] = Field(default_factory=list)
+
+
 def _as_dict(value):
     return value if isinstance(value, dict) else {}
 
 
 def _as_list(value):
     return value if isinstance(value, list) else []
+
+
+def _trim_text(value, max_chars):
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
 
 
 def _safe_float(value, default=50.0):
@@ -207,6 +246,22 @@ def _dedupe_and_rank_docs(docs, limit=3):
     return deduped
 
 
+def _build_llm_selected_docs(docs, limit=5):
+    compact_docs = []
+    for doc in _dedupe_and_rank_docs(docs, limit=limit):
+        compact_docs.append(
+            {
+                "title": _trim_text(doc.get("title"), 180),
+                "date": _trim_text(doc.get("date"), 80),
+                "search_type": _trim_text(doc.get("search_type"), 80),
+                "theme_hint": _trim_text(doc.get("theme_hint"), 80),
+                "query": _trim_text(doc.get("query"), 160),
+                "content_excerpt": _trim_text(doc.get("content"), 500),
+            }
+        )
+    return compact_docs
+
+
 def _company_terms(company, ticker):
     terms = []
     company_text = str(company or "").strip()
@@ -226,14 +281,16 @@ def _infer_mention_type(company, ticker, payload, docs, content_type):
     company_terms = _company_terms(company, ticker)
     direct_match = any(term and term in text for term in company_terms)
 
+    if content_type in {"MINDSET", "PSYCHOLOGY", "RISK"}:
+        return "MINDSET"
     if content_type == "SPECIFIC" and (direct_match or docs):
         return "DIRECT"
     if direct_match:
         return "DIRECT"
+    if _has_any(text, MINDSET_TERMS):
+        return "MINDSET"
     if _has_any(text, SECTOR_TERMS):
         return "SECTOR"
-    if content_type in {"MINDSET", "PSYCHOLOGY", "RISK"} or _has_any(text, MINDSET_TERMS):
-        return "MINDSET"
     if content_type == "MARKET" or _has_any(text, MARKET_TERMS):
         return "MARKET"
     return "NONE"
@@ -334,6 +391,139 @@ def _build_buy_upgrade_signal(sentiment, mention_type, confidence, freshness_lev
     )
 
 
+def _sanitize_string(value, max_chars):
+    return _trim_text(value, max_chars)
+
+
+def _sanitize_evidence_items(items, max_items=3):
+    output = []
+    seen = set()
+    for item in _as_list(items):
+        data = item.model_dump() if hasattr(item, "model_dump") else _as_dict(item)
+        title = _sanitize_string(data.get("title"), 180)
+        date = _sanitize_string(data.get("date"), 80)
+        reason = _sanitize_string(data.get("reason"), 180)
+        key = (title.lower(), date.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(
+            {
+                "title": title,
+                "date": date,
+                "reason": reason,
+            }
+        )
+        if len(output) >= max_items:
+            break
+    return output
+
+
+def sanitize_guru_opinion_output(
+    value,
+    company: str,
+    ticker: str | None,
+    youtube_payload: dict | None = None,
+) -> dict:
+    payload = _as_dict(youtube_payload)
+    data = value.model_dump() if hasattr(value, "model_dump") else _as_dict(value)
+    fallback = build_guru_opinion_deterministic(company, ticker, payload)
+    freshness_level = _normalize_freshness(payload.get("freshness_level"))
+
+    mention_type = str(data.get("mention_type") or "").upper()
+    if mention_type not in MENTION_TYPES:
+        mention_type = fallback["mention_type"]
+
+    sentiment = str(data.get("sentiment") or "").upper()
+    if sentiment not in SENTIMENTS:
+        sentiment = fallback["sentiment"]
+
+    confidence = str(data.get("confidence") or "").upper()
+    if confidence not in CONFIDENCE_LEVELS:
+        confidence = fallback["confidence"]
+
+    buy_upgrade_signal = bool(data.get("buy_upgrade_signal"))
+    if not _build_buy_upgrade_signal(sentiment, mention_type, confidence, freshness_level):
+        buy_upgrade_signal = False
+
+    price_note = _sanitize_string(data.get("price_discipline_note"), 300)
+    if not price_note:
+        price_note = PRICE_DISCIPLINE_BULLISH if sentiment == "BULLISH" else PRICE_DISCIPLINE_NEUTRAL
+
+    return {
+        "mention_type": mention_type,
+        "sentiment": sentiment,
+        "confidence": confidence,
+        "stock_relevance": _sanitize_string(
+            data.get("stock_relevance") or fallback["stock_relevance"],
+            400,
+        ),
+        "opinion_impact": _sanitize_string(
+            data.get("opinion_impact") or fallback["opinion_impact"],
+            400,
+        ),
+        "buy_upgrade_signal": buy_upgrade_signal,
+        "price_discipline_note": price_note,
+        "risk_warning": _sanitize_string(data.get("risk_warning") or "", 300),
+        "summary": _sanitize_string(data.get("summary") or fallback["summary"], 500),
+        "evidence_items": _sanitize_evidence_items(data.get("evidence_items")),
+    }
+
+
+def build_guru_opinion_messages(guru_opinion_input: dict) -> list[dict]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You generate a compact guru_opinion for a stock report. Use only "
+                "the provided YouTube/RAG payload. Do not invent YouTube quotes, "
+                "prices, target prices, dates, or claims. Distinguish mention_type: "
+                "DIRECT means the stock/company/ticker is directly discussed; "
+                "SECTOR means a sector/theme is clearly relevant to the stock; "
+                "MARKET means broad market view affects the stock indirectly; "
+                "MINDSET means only investment psychology or risk discipline; "
+                "NONE means no usable evidence. Do not treat MINDSET-only as "
+                "direct Buy evidence. sentiment must be BULLISH, NEUTRAL, or "
+                "BEARISH. confidence must be HIGH, MEDIUM, or LOW. "
+                "buy_upgrade_signal may be true only when sentiment is BULLISH, "
+                "mention_type is DIRECT/SECTOR/MARKET, confidence is HIGH/MEDIUM, "
+                "and evidence is fresh or recent enough. It must be false for "
+                "MINDSET, NONE, LOW confidence, BEARISH, NEUTRAL, stale, or weak "
+                "evidence. price_discipline_note must remind that guru positivity "
+                "does not mean immediate full buy. Write natural Korean text fields, "
+                "while enum fields must use fixed English enum values. Keep "
+                "evidence_items compact."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Build guru_opinion from this compact YouTube/RAG payload:\n"
+                + json.dumps(guru_opinion_input, ensure_ascii=False, indent=2)
+            ),
+        },
+    ]
+
+
+def call_guru_opinion_structured_output(
+    company: str,
+    ticker: str | None,
+    youtube_payload: dict | None = None,
+) -> dict:
+    opinion_input = build_guru_opinion_input(company, ticker, youtube_payload)
+
+    from openai import OpenAI
+
+    client = OpenAI()
+    completion = client.beta.chat.completions.parse(
+        model=get_openai_guru_opinion_model(),
+        messages=build_guru_opinion_messages(opinion_input["llm_payload"]),
+        response_format=GuruOpinionOutput,
+    )
+    parsed = completion.choices[0].message.parsed
+    return sanitize_guru_opinion_output(parsed, company, ticker, youtube_payload)
+
+
 def build_guru_opinion_input(company: str, ticker: str | None, youtube_payload: dict | None = None) -> dict:
     payload = _as_dict(youtube_payload)
     docs = _dedupe_and_rank_docs(payload.get("selected_docs"))
@@ -345,6 +535,21 @@ def build_guru_opinion_input(company: str, ticker: str | None, youtube_payload: 
         "company": company,
         "ticker": ticker,
         "youtube_payload": payload,
+        "llm_payload": {
+            "company": company,
+            "ticker": ticker,
+            "guru_sentiment_score": payload.get("guru_sentiment_score"),
+            "key_strategy": _trim_text(payload.get("key_strategy"), 600),
+            "content_type": content_type,
+            "insight_date": payload.get("insight_date"),
+            "freshness_level": freshness_level,
+            "mindset_summary": _trim_text(payload.get("mindset_summary"), 500),
+            "market_principle": _trim_text(payload.get("market_principle"), 500),
+            "risk_control": _trim_text(payload.get("risk_control"), 500),
+            "guru_insight_details": _trim_text(payload.get("guru_insight_details"), 700),
+            "selected_docs": _build_llm_selected_docs(payload.get("selected_docs")),
+            "source_policy": _trim_text(payload.get("source_policy"), 200),
+        },
         "selected_docs": docs,
         "content_type": content_type,
         "freshness_level": freshness_level,
@@ -415,5 +620,16 @@ def attach_guru_opinion(
     youtube_payload: dict | None = None,
 ) -> dict:
     payload = dict(_as_dict(youtube_payload))
+    if is_guru_opinion_llm_enabled():
+        try:
+            payload["guru_opinion"] = call_guru_opinion_structured_output(
+                company,
+                ticker,
+                payload,
+            )
+            return payload
+        except Exception as exc:
+            logger.warning("guru_opinion LLM failed; using deterministic fallback: %s", exc)
+
     payload["guru_opinion"] = build_guru_opinion_deterministic(company, ticker, payload)
     return payload

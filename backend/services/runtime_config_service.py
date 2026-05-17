@@ -38,3 +38,7 @@ def is_news_brief_llm_enabled():
 
 def is_guru_opinion_llm_enabled():
     return os.getenv("REPORT_GURU_OPINION_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES
+
+
+def is_guru_strategy_llm_enabled():
+    return os.getenv("REPORT_GURU_STRATEGY_LLM_ENABLED", "").strip().lower() in TRUE_ENV_VALUES

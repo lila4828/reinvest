@@ -14,8 +14,7 @@ from graphs.report_graph import run_single_report_graph
 from schemas.report_state import ReportState, create_initial_report_state
 from services.report_file_service import save_report_files
 from services.guru_strategy_service import (
-    build_guru_strategy_context_deterministic,
-    build_guru_strategy_context_fallback,
+    build_guru_strategy_context_with_llm_or_fallback,
 )
 from services.report_output_service import build_output_report_item, build_run_summary_output
 from services.report_render_service import render_markdown_report
@@ -66,10 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_guru_strategy_context(docs=None):
-    if docs:
-        return build_guru_strategy_context_deterministic(docs)
-
-    return build_guru_strategy_context_fallback("no_runtime_retrieval_fallback")
+    return build_guru_strategy_context_with_llm_or_fallback(docs)
 
 
 def run_single_report_pipeline(

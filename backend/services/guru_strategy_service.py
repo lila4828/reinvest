@@ -1,9 +1,21 @@
-"""Deterministic guru strategy context helpers.
+"""Guru strategy context helpers.
 
-This module prepares a compact batch-level strategy context from provided
-Youtube/RAG documents. It does not query Chroma, call OpenAI, or mutate runtime
-state by itself.
+The default path is deterministic/fallback. The optional OpenAI path is guarded
+by REPORT_GURU_STRATEGY_LLM_ENABLED and does not perform retrieval.
 """
+
+import json
+import logging
+
+from pydantic import BaseModel, Field
+
+from services.runtime_config_service import (
+    get_openai_guru_strategy_model,
+    is_guru_strategy_llm_enabled,
+)
+
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SOURCE_POLICY = "recent_retrieved_docs_not_db_global_latest"
 
@@ -45,12 +57,44 @@ CATEGORY_RULES = {
 }
 
 
+class GuruStrategyEvidenceItem(BaseModel):
+    title: str = Field(default="")
+    date: str = Field(default="")
+    reason: str = Field(default="")
+
+
+class GuruStrategySourceWindow(BaseModel):
+    broadcast_count: int = 0
+    start_date: str = "N/A"
+    end_date: str = "N/A"
+    source_policy: str = DEFAULT_SOURCE_POLICY
+
+
+class GuruStrategyContextOutput(BaseModel):
+    recent_market_view: str = ""
+    preferred_stock_style: str = ""
+    avoid_stock_style: str = ""
+    portfolio_principle: str = ""
+    risk_control_rule: str = ""
+    mindset_summary: str = ""
+    action_guide: str = ""
+    source_window: GuruStrategySourceWindow = Field(default_factory=GuruStrategySourceWindow)
+    evidence_items: list[GuruStrategyEvidenceItem] = Field(default_factory=list)
+
+
 def _as_dict(value):
     return value if isinstance(value, dict) else {}
 
 
 def _as_list(value):
     return value if isinstance(value, list) else []
+
+
+def _trim_text(value, max_chars):
+    text = str(value or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
 
 
 def _doc_text(doc):
@@ -107,6 +151,23 @@ def _dedupe_and_rank_docs(docs, limit=3):
     return deduped
 
 
+def _build_llm_docs(docs, limit=3):
+    compact_docs = []
+    for doc in _dedupe_and_rank_docs(docs, limit=limit):
+        compact_docs.append(
+            {
+                "title": _trim_text(doc.get("title"), 180),
+                "date": _trim_text(doc.get("date"), 80),
+                "source": _trim_text(doc.get("source"), 80),
+                "search_type": _trim_text(doc.get("search_type"), 80),
+                "theme_hint": _trim_text(doc.get("theme_hint"), 80),
+                "query": _trim_text(doc.get("query"), 160),
+                "content_excerpt": _trim_text(doc.get("content"), 500),
+            }
+        )
+    return compact_docs
+
+
 def _matched_text(category, docs):
     keywords = CATEGORY_RULES[category]["keywords"]
     for doc in docs:
@@ -153,9 +214,119 @@ def build_guru_strategy_context_input(docs: list[dict] | None = None) -> dict:
     selected_docs = _dedupe_and_rank_docs(docs)
     return {
         "selected_docs": selected_docs,
+        "llm_docs": _build_llm_docs(docs),
+        "doc_count": len(_as_list(docs)),
         "source_window": _build_source_window(selected_docs),
         "evidence_items": _build_evidence_items(selected_docs),
     }
+
+
+def _sanitize_string(value, max_chars):
+    return _trim_text(value, max_chars)
+
+
+def _sanitize_source_window(value, fallback):
+    data = value.model_dump() if hasattr(value, "model_dump") else _as_dict(value)
+    fallback_data = _as_dict(fallback)
+    try:
+        broadcast_count = int(data.get("broadcast_count", fallback_data.get("broadcast_count", 0)))
+    except (TypeError, ValueError):
+        broadcast_count = int(fallback_data.get("broadcast_count", 0) or 0)
+    return {
+        "broadcast_count": max(0, min(broadcast_count, 3)),
+        "start_date": _sanitize_string(data.get("start_date") or fallback_data.get("start_date") or "N/A", 80),
+        "end_date": _sanitize_string(data.get("end_date") or fallback_data.get("end_date") or "N/A", 80),
+        "source_policy": _sanitize_string(
+            data.get("source_policy") or fallback_data.get("source_policy") or DEFAULT_SOURCE_POLICY,
+            160,
+        ),
+    }
+
+
+def _sanitize_evidence_items(items, max_items=3):
+    output = []
+    seen = set()
+    for item in _as_list(items):
+        data = item.model_dump() if hasattr(item, "model_dump") else _as_dict(item)
+        title = _sanitize_string(data.get("title"), 180)
+        date = _sanitize_string(data.get("date"), 80)
+        reason = _sanitize_string(data.get("reason"), 180)
+        key = (title.lower(), date.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append({"title": title, "date": date, "reason": reason})
+        if len(output) >= max_items:
+            break
+    return output
+
+
+def sanitize_guru_strategy_context_output(value, docs: list[dict] | None = None) -> dict:
+    data = value.model_dump() if hasattr(value, "model_dump") else _as_dict(value)
+    fallback = build_guru_strategy_context_deterministic(docs)
+    return {
+        "recent_market_view": _sanitize_string(data.get("recent_market_view") or fallback["recent_market_view"], 500),
+        "preferred_stock_style": _sanitize_string(data.get("preferred_stock_style") or fallback["preferred_stock_style"], 500),
+        "avoid_stock_style": _sanitize_string(data.get("avoid_stock_style") or fallback["avoid_stock_style"], 500),
+        "portfolio_principle": _sanitize_string(data.get("portfolio_principle") or fallback["portfolio_principle"], 500),
+        "risk_control_rule": _sanitize_string(data.get("risk_control_rule") or fallback["risk_control_rule"], 500),
+        "mindset_summary": _sanitize_string(data.get("mindset_summary") or fallback["mindset_summary"], 500),
+        "action_guide": _sanitize_string(data.get("action_guide") or fallback["action_guide"], 500),
+        "source_window": _sanitize_source_window(data.get("source_window"), fallback["source_window"]),
+        "evidence_items": _sanitize_evidence_items(data.get("evidence_items")),
+    }
+
+
+def build_guru_strategy_context_messages(context_input: dict) -> list[dict]:
+    llm_payload = {
+        "doc_count": context_input.get("doc_count", 0),
+        "source_window": context_input.get("source_window"),
+        "source_policy": _as_dict(context_input.get("source_window")).get("source_policy", DEFAULT_SOURCE_POLICY),
+        "selected_docs": context_input.get("llm_docs", []),
+    }
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You generate a compact guru_strategy_context for a stock report batch. "
+                "Use only the provided YouTube/RAG docs/context. Do not invent YouTube "
+                "quotes, dates, prices, target prices, or claims. Do not claim exact "
+                "latest 3 broadcasts unless source_window proves it. Use cautious source "
+                "wording such as '최근 검색된 구루 전략 맥락' or '최근 확인된 방송 맥락'. "
+                "Extract broad principles: recent_market_view, preferred_stock_style, "
+                "avoid_stock_style, portfolio_principle, risk_control_rule, "
+                "mindset_summary, and action_guide. Do not generate a direct Buy/Sell "
+                "opinion for any individual stock. Do not let strategy context alone "
+                "imply immediate Buy. If evidence is weak, noisy, or empty, produce a "
+                "conservative neutral context. Write natural Korean text fields. Keep "
+                "evidence_items compact."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Build guru_strategy_context from this compact context:\n"
+                + json.dumps(llm_payload, ensure_ascii=False, indent=2)
+            ),
+        },
+    ]
+
+
+def call_guru_strategy_context_structured_output(
+    docs: list[dict] | None = None,
+) -> dict:
+    context_input = build_guru_strategy_context_input(docs)
+
+    from openai import OpenAI
+
+    client = OpenAI()
+    completion = client.beta.chat.completions.parse(
+        model=get_openai_guru_strategy_model(),
+        messages=build_guru_strategy_context_messages(context_input),
+        response_format=GuruStrategyContextOutput,
+    )
+    parsed = completion.choices[0].message.parsed
+    return sanitize_guru_strategy_context_output(parsed, docs)
 
 
 def build_guru_strategy_context_fallback(reason: str | None = None) -> dict:
@@ -188,6 +359,21 @@ def build_guru_strategy_context_deterministic(docs: list[dict] | None = None) ->
         "evidence_items": context_input["evidence_items"],
     }
     return context
+
+
+def build_guru_strategy_context_with_llm_or_fallback(
+    docs: list[dict] | None = None,
+) -> dict:
+    if is_guru_strategy_llm_enabled():
+        try:
+            return call_guru_strategy_context_structured_output(docs)
+        except Exception as exc:
+            logger.warning(
+                "guru_strategy_context LLM failed; using deterministic fallback: %s",
+                exc,
+            )
+
+    return build_guru_strategy_context_deterministic(docs)
 
 
 def attach_guru_strategy_context(payload: dict, context: dict | None = None) -> dict:

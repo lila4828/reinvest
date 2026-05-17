@@ -60,10 +60,6 @@ def is_guru_strategy_llm_enabled():
     return _get_env_bool("REPORT_GURU_STRATEGY_LLM_ENABLED", default=True)
 
 
-def is_guru_strategy_recent_rag_enabled():
-    return _get_env_bool("REPORT_GURU_STRATEGY_RAG_ENABLED", default=True)
-
-
 def _get_env_int(name: str, default: int, minimum: int | None = None) -> int:
     try:
         value = int(os.getenv(name, str(default)))

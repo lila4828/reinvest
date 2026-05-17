@@ -13,7 +13,6 @@ from services.runtime_config_service import (
     get_guru_strategy_rag_lookback_days,
     get_guru_strategy_rag_max_docs,
     get_guru_strategy_rag_max_videos,
-    is_guru_strategy_recent_rag_enabled,
 )
 
 
@@ -216,9 +215,6 @@ def get_recent_guru_strategy_docs(
     max_videos: int = 3,
     max_docs: int = 6,
 ) -> list[dict]:
-    if not is_guru_strategy_recent_rag_enabled():
-        return []
-
     fallback_days = fallback_days if fallback_days is not None else [7, 14]
     try:
         raw_docs = _query_local_rag_docs(max(max_docs, max_videos * 2))

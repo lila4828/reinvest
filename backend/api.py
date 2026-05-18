@@ -1,6 +1,7 @@
 import os
 import uuid
 import hmac
+import json
 import uvicorn
 import traceback
 import logging
@@ -79,6 +80,41 @@ COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 sessions = {}
 jobs = {}
 jobs_lock = Lock()
+
+
+def get_report_meta_filename(filename: str):
+    if not filename or filename == "summary.md" or not filename.endswith(".md"):
+        return None
+
+    return filename[:-3] + ".meta.json"
+
+
+def load_report_meta(date: str, filename: str):
+    meta_filename = get_report_meta_filename(filename)
+
+    if not meta_filename:
+        return None
+
+    meta_path = os.path.join(RESULT_DIR_ABSPATH, date, meta_filename)
+    abs_meta_path = os.path.abspath(meta_path)
+
+    if not abs_meta_path.startswith(RESULT_DIR_ABSPATH):
+        api_logger.warning(
+            f"invalid report meta path blocked: date={date}, filename={filename}"
+        )
+        return None
+
+    if not os.path.exists(abs_meta_path):
+        return None
+
+    try:
+        with open(abs_meta_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        api_logger.warning(
+            f"report meta load failed: path={abs_meta_path}, error={e}"
+        )
+        return None
 
 
 class LoginRequest(BaseModel):
@@ -803,13 +839,18 @@ def get_report_detail(date: str, filename: str, session=Depends(get_current_sess
 
     try:
         with open(abs_file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            meta = load_report_meta(safe_date, safe_filename)
+
             return {
                 "date": safe_date,
                 "filename": safe_filename,
                 "modified_at": datetime.fromtimestamp(
                     os.path.getmtime(abs_file_path)
                 ).isoformat(timespec="minutes"),
-                "content": f.read(),
+                "content": content,
+                "markdown": content,
+                "meta": meta,
             }
     except Exception as e:
         api_logger.exception(

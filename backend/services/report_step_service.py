@@ -132,6 +132,8 @@ def compact_analysis_inputs(acc_data, macro_json, research_json, youtube_json):
         "roe_label": acc_data.get("roe_label"),
         "debt_to_equity": acc_data.get("debt_to_equity"),
         "operating_margin": acc_data.get("operating_margin"),
+        "ma_20": acc_data.get("ma_20"),
+        "ma_30": acc_data.get("ma_30"),
         "ma_60": acc_data.get("ma_60"),
         "ma_200": acc_data.get("ma_200"),
         "ma_350": acc_data.get("ma_350"),

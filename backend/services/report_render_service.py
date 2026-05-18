@@ -144,6 +144,10 @@ def render_markdown_report(
         state["final_report"] = {
             "investment_opinion": report_data.investment_opinion,
             "one_line_conclusion": report_data.one_line_conclusion,
+            "executive_summary": [
+                str(line)
+                for line in report_data.executive_summary[:3]
+            ],
             "markdown": md_report,
         }
         state["status"] = "report_generated"

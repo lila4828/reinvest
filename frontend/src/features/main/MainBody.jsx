@@ -126,6 +126,88 @@ function getReportDetailPath(report) {
   return `/report?${params.toString()}`;
 }
 
+function formatPriceValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return '-';
+  }
+
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return String(value);
+  }
+
+  return `${Math.round(numericValue).toLocaleString('ko-KR')}원`;
+}
+
+function buildMetaSummaryMarkdown(report) {
+  const companyName = report.companyName || report.company || '종목';
+
+  if (report.status === 'FAILED') {
+    const failedReason = report.failed_reason || '분석 중단 사유가 제공되지 않았습니다.';
+
+    return `# ⚠️ ${companyName} 분석 중단 리포트
+
+| 항목 | 내용 |
+| :--- | :--- |
+| **상태** | 분석 중단 |
+| **중단 사유** | ${failedReason} |
+
+## 해석
+현재 시스템의 보수적 필터 기준을 통과하지 못해 정식 투자 리포트 생성을 중단했습니다.`;
+  }
+
+  const opinion = report.investment_opinion || 'N/A';
+  const oneLineConclusion = report.one_line_conclusion || '한 줄 결론이 아직 제공되지 않았습니다.';
+  const executiveSummary = Array.isArray(report.executive_summary)
+    ? report.executive_summary.slice(0, 3)
+    : [];
+  const summaryLines = executiveSummary.length > 0
+    ? executiveSummary.map((line) => `- ${line}`).join('\n')
+    : '- 요약 정보가 아직 제공되지 않았습니다.';
+
+  return `# 📌 ${companyName} AI 투자 전략 리포트
+
+| 항목 | 내용 |
+| :--- | :--- |
+| **현재가** | **${formatPriceValue(report.current_price)}** |
+| **분할매수 기준가** | **${formatPriceValue(report.split_buy_price)}** |
+| **매도 검토가** | **${formatPriceValue(report.sell_review_price)}** |
+
+### 🧭 투자 판단 요약
+
+- **투자의견:** ${opinion}
+- **분할매수 기준가:** ${formatPriceValue(report.split_buy_price)}
+- **매도 검토가:** ${formatPriceValue(report.sell_review_price)}
+
+### 💡 수석 애널리스트 한 줄 결론
+> **${oneLineConclusion}**
+
+### 🎯 3줄 요약 (Executive Summary)
+${summaryLines}`;
+}
+
+function buildReportFromMetaSummary(report) {
+  const companyName = report.companyName || report.company || '';
+  const opinion = report.status === 'FAILED'
+    ? '분석 중단'
+    : report.investment_opinion || 'N/A';
+
+  return {
+    ...report,
+    companyName,
+    opinion,
+    mdContent: buildMetaSummaryMarkdown({ ...report, companyName }),
+    ticker: report.ticker,
+    date: report.date,
+    modifiedAt: report.modified_at || null,
+    filename: report.filename,
+    status: report.status || null,
+    failedReason: report.failed_reason || null,
+    hasMeta: true,
+  };
+}
+
 function parseReportsFromMarkdown(content) {
   if (!content || typeof content !== 'string') return [];
 
@@ -278,8 +360,8 @@ function MainBody({
           if (!current || getReportSortValue(report) > getReportSortValue(current)) {
             latestByTicker.set(meta.ticker, {
               ...report,
-              companyName: meta.companyName,
-              ticker: meta.ticker,
+              companyName: report.company || meta.companyName,
+              ticker: report.ticker || meta.ticker,
             });
           }
         });
@@ -294,6 +376,10 @@ function MainBody({
 
         const reportDetails = await Promise.all(
           latestReports.map(async (report) => {
+            if (report.has_meta) {
+              return buildReportFromMetaSummary(report);
+            }
+
             const date = encodeURIComponent(report.date);
             const filename = encodeURIComponent(report.filename);
 

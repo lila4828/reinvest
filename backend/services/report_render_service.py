@@ -82,10 +82,6 @@ def render_markdown_report(
 ):
     _set_report_step(state, "render_report")
     report_data = final_result.pydantic
-    chart_json = final_result.pydantic.model_dump_json(
-        include={"chart_data"},
-        indent=2,
-    )
 
     price_unit = _get_price_unit(ticker)
     current_price_text = _format_price(current_price, price_unit)
@@ -138,15 +134,7 @@ def render_markdown_report(
 
 ## 5. 💡 수석 애널리스트 종합 결론
 {report_data.final_conclusion}
-
----
-
-## 📊 실적 차트 데이터
 """
-
-    md_report += "```json\n"
-    md_report += chart_json
-    md_report += "\n```\n"
 
     if state is not None:
         state["chart_data"] = final_result.pydantic.model_dump(

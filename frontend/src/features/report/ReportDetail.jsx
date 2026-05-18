@@ -134,7 +134,26 @@ function getYAxisDomain(chartData) {
   ];
 }
 
-function extractChartSection(content) {
+function normalizeRawChartData(chartData, isKoreanStock) {
+  if (!Array.isArray(chartData)) {
+    return [];
+  }
+
+  return chartData.map((item) => ({
+    period: getPeriodLabel(item.period),
+    revenue: normalizeChartValue(item.revenue, isKoreanStock),
+    net_profit: normalizeChartValue(item.net_profit, isKoreanStock),
+    fcf: normalizeChartValue(item.fcf, isKoreanStock),
+  }));
+}
+
+function getMetaChartData(meta) {
+  const chartData = meta?.financial_chart_data;
+
+  return Array.isArray(chartData) && chartData.length > 0 ? chartData : [];
+}
+
+function extractChartSection(content, meta) {
   if (!content || typeof content !== 'string') {
     return {
       cleanedContent: '',
@@ -145,15 +164,25 @@ function extractChartSection(content) {
 
   const cleaned = cleanReportContent(content);
   const isKoreanStock = isKoreanReport(cleaned);
+  const metaChartData = getMetaChartData(meta);
 
   const chartBlockRegex =
     /##\s*📎\s*실적 차트 데이터[\s\S]*?```json\s*([\s\S]*?)\s*```/m;
 
   const match = cleaned.match(chartBlockRegex);
+  const cleanedContent = match ? cleaned.replace(chartBlockRegex, '').trim() : cleaned;
+
+  if (metaChartData.length > 0) {
+    return {
+      cleanedContent,
+      chartData: normalizeRawChartData(metaChartData, isKoreanStock),
+      isKoreanStock,
+    };
+  }
 
   if (!match) {
     return {
-      cleanedContent: cleaned,
+      cleanedContent,
       chartData: [],
       isKoreanStock,
     };
@@ -168,18 +197,9 @@ function extractChartSection(content) {
     console.error('차트 JSON 파싱 실패:', error);
   }
 
-  const cleanedContent = cleaned.replace(chartBlockRegex, '').trim();
-
-  const normalizedChartData = parsedChartData.map((item) => ({
-    period: getPeriodLabel(item.period),
-    revenue: normalizeChartValue(item.revenue, isKoreanStock),
-    net_profit: normalizeChartValue(item.net_profit, isKoreanStock),
-    fcf: normalizeChartValue(item.fcf, isKoreanStock),
-  }));
-
   return {
     cleanedContent,
-    chartData: normalizedChartData,
+    chartData: normalizeRawChartData(parsedChartData, isKoreanStock),
     isKoreanStock,
   };
 }
@@ -286,14 +306,15 @@ function renderBarLabel(isKoreanStock) {
 function ReportDetail({
   report,
   content,
+  meta,
   macroData,
   isLoading,
   onBack,
   showBackButton = true,
 }) {
   const { cleanedContent, chartData, isKoreanStock } = useMemo(
-    () => extractChartSection(content),
-    [content]
+    () => extractChartSection(content, meta),
+    [content, meta]
   );
   const displayContent = useMemo(() => {
     const contentWithDate = addBaseDateToContent(cleanedContent, report);

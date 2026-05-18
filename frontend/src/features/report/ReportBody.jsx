@@ -9,6 +9,7 @@ function ReportBody({ refreshKey = 0 }) {
     reports,
     selectedReport,
     reportContent,
+    reportMeta,
     macroData,
     isLoadingList,
     isLoadingDetail,
@@ -72,6 +73,7 @@ function ReportBody({ refreshKey = 0 }) {
             <ReportDetail
               report={selectedReport}
               content={reportContent}
+              meta={reportMeta}
               macroData={macroData}
               isLoading={isLoadingDetail}
               onBack={handleBack}

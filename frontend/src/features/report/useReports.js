@@ -16,6 +16,7 @@ export function useReports(refreshKey = 0) {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [reportContent, setReportContent] = useState('');
+  const [reportMeta, setReportMeta] = useState(null);
   const [macroData, setMacroData] = useState(null);
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -78,13 +79,15 @@ export function useReports(refreshKey = 0) {
     setSelectedReport(report);
     setIsLoadingDetail(true);
     setErrorMsg('');
+    setReportMeta(null);
 
     const date = encodeURIComponent(report.date);
     const filename = encodeURIComponent(report.filename);
 
     apiClient.get(`/api/reports/${date}/${filename}`)
       .then(response => {
-        setReportContent(response.data.content);
+        setReportContent(response.data.markdown || response.data.content || '');
+        setReportMeta(response.data.meta || null);
         setIsLoadingDetail(false);
       })
       .catch(error => {
@@ -97,6 +100,7 @@ export function useReports(refreshKey = 0) {
         }
 
         setIsLoadingDetail(false);
+        setReportMeta(null);
       });
   }, [refreshKey]);
 
@@ -106,6 +110,7 @@ export function useReports(refreshKey = 0) {
     if (!dateParam || !filenameParam) {
       setSelectedReport(null);
       setReportContent('');
+      setReportMeta(null);
       setIsLoadingDetail(false);
       return;
     }
@@ -117,6 +122,7 @@ export function useReports(refreshKey = 0) {
     if (!matchedReport) {
       setSelectedReport(null);
       setReportContent('');
+      setReportMeta(null);
       setErrorMsg('해당 리포트를 찾을 수 없습니다.');
       return;
     }
@@ -149,12 +155,14 @@ export function useReports(refreshKey = 0) {
     setSelectedReport(null);
     setErrorMsg('');
     setReportContent('');
+    setReportMeta(null);
   };
 
   return {
     reports,
     selectedReport,
     reportContent,
+    reportMeta,
     macroData,
     isLoadingList,
     isLoadingDetail,

@@ -150,7 +150,7 @@ def load_existing_summaries(result_dir: str, current_summary: str = ""):
             logger.warning(f"summary merge skip failed: path={file_path}, error={e}")
             continue
 
-        if not report_summary or "[분석 중단]" in report_summary:
+        if not report_summary or "분석 중단" in report_summary:
             continue
 
         filename_without_ext = filename[:-3]

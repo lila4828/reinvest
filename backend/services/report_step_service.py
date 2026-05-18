@@ -17,6 +17,7 @@ from services.investment_opinion_service import calculate_investment_opinion
 from services.investment_opinion_service import apply_guru_positive_policy
 from services.guru_strategy_service import attach_guru_strategy_context
 from services.price_service import calculate_price_targets
+from services.report_render_service import render_failed_markdown_report
 
 
 logger = logging.getLogger(__name__)
@@ -241,12 +242,26 @@ def run_macro_step(macro_agent=None, macro_tasks=None, state: ReportState | None
     return macro_score, macro_score_reasons, macro_json
 
 
+def extract_failed_report_reason(message: str):
+    reason = str(message or "").strip()
+
+    if "FAIL 사유:" in reason:
+        reason = reason.split("FAIL 사유:", 1)[1].strip()
+    elif ":" in reason:
+        reason = reason.split(":", 1)[1].strip()
+
+    return reason or "분석 중단 사유를 확인할 수 없습니다."
+
+
 def build_failed_report_item(ticker: str, company: str, message: str):
     return {
         "ticker": ticker,
         "company": company,
         "status": "FAILED",
-        "report": message,
+        "report": render_failed_markdown_report(
+            company,
+            extract_failed_report_reason(message),
+        ),
     }
 
 

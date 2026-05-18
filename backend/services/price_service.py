@@ -1,27 +1,28 @@
 def calculate_price_targets(acc_data):
     current_price = acc_data.get("current_price")
-    ma_60 = acc_data.get("ma_60")
-    ma_200 = acc_data.get("ma_200")
-    ma_350 = acc_data.get("ma_350")
+    ma_30_candidates = [
+        acc_data.get("ma_30"),
+        acc_data.get("ma30"),
+        acc_data.get("moving_average_30"),
+        acc_data.get("moving_average_30d"),
+    ]
+    ma_30 = next(
+        (
+            value
+            for value in ma_30_candidates
+            if isinstance(value, (int, float)) and value > 0
+        ),
+        None,
+    )
 
     if isinstance(current_price, (int, float)) and current_price > 0:
-        if (
-            isinstance(ma_60, (int, float))
-            and isinstance(ma_200, (int, float))
-            and ma_60 > ma_200
-            and ma_200 > 0
-        ):
-            target_buy_price = ma_60
-            defense_price = ma_200
+        if ma_30 is not None:
+            target_buy_price = ma_30
         else:
+            # Temporary fallback until accounting data supplies a real 30-day MA.
             target_buy_price = current_price * 0.96
 
-            candidates = [
-                x for x in [ma_60, ma_200, ma_350]
-                if isinstance(x, (int, float)) and 0 < x < target_buy_price
-            ]
-
-            defense_price = max(candidates) if candidates else target_buy_price * 0.92
+        defense_price = current_price * 0.7
     else:
         target_buy_price = None
         defense_price = None

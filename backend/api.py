@@ -117,6 +117,52 @@ def load_report_meta(date: str, filename: str):
         return None
 
 
+def build_report_list_meta_summary(date: str, filename: str):
+    meta_filename = get_report_meta_filename(filename)
+    fallback = {
+        "status": None,
+        "investment_opinion": None,
+        "one_line_conclusion": None,
+        "executive_summary": [],
+        "current_price": None,
+        "split_buy_price": None,
+        "sell_review_price": None,
+        "failed_reason": None,
+        "meta_filename": meta_filename,
+        "has_meta": False,
+    }
+
+    if not meta_filename:
+        return fallback
+
+    meta = load_report_meta(date, filename)
+
+    if not isinstance(meta, dict):
+        return fallback
+
+    price = meta.get("price")
+
+    if not isinstance(price, dict):
+        price = {}
+
+    return {
+        "status": meta.get("status"),
+        "investment_opinion": meta.get("investment_opinion"),
+        "one_line_conclusion": meta.get("one_line_conclusion"),
+        "executive_summary": (
+            meta.get("executive_summary")
+            if isinstance(meta.get("executive_summary"), list)
+            else []
+        ),
+        "current_price": price.get("current_price"),
+        "split_buy_price": price.get("split_buy_price"),
+        "sell_review_price": price.get("sell_review_price"),
+        "failed_reason": meta.get("failed_reason"),
+        "meta_filename": meta_filename,
+        "has_meta": True,
+    }
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -791,6 +837,7 @@ def get_report_list(session=Depends(get_current_session)):
             ).isoformat(timespec="minutes")
             display_name = "종합 분석 리포트" if filename == "summary.md" else filename.replace(".md", "")
             market_info = get_report_market_info(filename)
+            meta_summary = build_report_list_meta_summary(date_dir, filename)
 
             reports.append(
                 {
@@ -804,6 +851,7 @@ def get_report_list(session=Depends(get_current_session)):
                     "company": market_info["company"],
                     "exchange": market_info["exchange"],
                     "market_label": market_info["market_label"],
+                    **meta_summary,
                 }
             )
 

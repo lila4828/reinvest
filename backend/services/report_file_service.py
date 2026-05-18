@@ -42,6 +42,13 @@ def _get_chart_data(value):
     return []
 
 
+def _get_summary_list(value):
+    if isinstance(value, list):
+        return [str(item) for item in value[:3]]
+
+    return []
+
+
 def _extract_failed_reason(item, state):
     if item.get("status") == "SUCCESS":
         return None
@@ -106,6 +113,16 @@ def build_report_meta_payload(item, state=None):
         "entry_strategy": _first_present(
             final_report.get("entry_strategy"),
             item.get("entry_strategy"),
+        ),
+        "one_line_conclusion": _first_present(
+            final_report.get("one_line_conclusion"),
+            item.get("one_line_conclusion"),
+        ),
+        "executive_summary": _get_summary_list(
+            _first_present(
+                final_report.get("executive_summary"),
+                item.get("executive_summary"),
+            )
         ),
         "price": {
             "current_price": _first_present(
